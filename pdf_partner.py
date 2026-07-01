@@ -1,9 +1,6 @@
 r"""
 PDF Partner - Modular PDF Utility Application
 
-Project Folder:
-    D:\Abhishek K\PDF Partner
-
 Run:
     python pdf_partner.py
 
