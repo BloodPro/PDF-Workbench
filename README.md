@@ -10,13 +10,41 @@ The application is designed especially for legal, tax, tribunal, appeal, and doc
 
 ## Current Version
 
-## v1.0.1 — Phase 1 UI Refresh
+## V1.0.2 — Stability & UI Polish Update
 
-Version `v1.0.1` is primarily a **UI/UX improvement release**.
+Version `V1.0.2` is a stability and UI polish update built on top of the Phase 1 UI Refresh introduced in `v1.0.1`.
 
-The original executable released as `v1.0.0` focused on making the core PDF functionality available. Version `v1.0.1` improves the application presentation, dashboard, navigation, branding, and user experience while preserving the existing PDF processing features.
+This release focuses on improving application stability, sidebar usability, output-file safety, version metadata, and release-build readiness while preserving the existing PDF processing functionality.
 
 ---
+
+## What is New in V1.0.2
+
+### Stability Improvements
+
+- Permanently cleaned the Tkinter padding issue that could cause runtime errors in the dashboard/sidebar UI.
+- Improved application reliability after the Phase 1 UI refresh.
+- Preserved the existing PDF processing modules and workflows.
+
+### UI Polish
+
+- Added active sidebar highlighting.
+- The sidebar now gives visual feedback for the currently selected tool.
+- Navigation between dashboard and modules is clearer and more professional.
+
+### Output Safety Improvements
+
+- Improved output-path generation.
+- Added safer output suffix handling.
+- Reduced the risk of accidentally overwriting original input PDFs.
+- Added fallback output suffix handling where required.
+
+### Versioning Improvements
+
+- Updated application version to `1.0.2`.
+- Added updated Windows executable metadata through `version_info_v1.0.2.txt`.
+- Recommended executable release name:
+
 
 ## Project Roadmap
 
@@ -30,7 +58,7 @@ Version `v1.0.1` represents the first step in this roadmap by introducing a more
 
 ---
 
-## What Is New In v1.0.1
+## What is New in V1.0.1
 
 ## Phase 1 UI Refresh
 
