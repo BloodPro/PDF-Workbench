@@ -85,7 +85,7 @@ APP_AUTHOR = "BloodPro"
 APP_REPOSITORY = "https://github.com/BloodPro/PDF-Workbench.git"
 APP_DESCRIPTION = "Professional PDF Workbench for Litigation & Documentation preparation"
 APP_COPYRIGHT = "© BloodPro"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.2"
 SETTINGS_FILE = Path.home() / ".pdf_partner_settings.json"
 LOG_FILE = Path.home() / "PDF_Partner.log"
 
@@ -372,6 +372,14 @@ def parse_pages(text, total):
 
 
 def resolve_output_path(input_path, suffix, output_mode="Same folder", chosen_folder="", if_exists="Auto-increment"):
+    """Resolve a safe output path for a processed PDF.
+
+    v1.0.2 safety improvements:
+    - sanitises the source stem and suffix;
+    - creates output folders safely;
+    - prevents accidental overwrite of the original input file;
+    - auto-increments when required.
+    """
     p = Path(input_path)
     if output_mode == "Choose output folder" and chosen_folder:
         folder = Path(chosen_folder)
@@ -381,14 +389,30 @@ def resolve_output_path(input_path, suffix, output_mode="Same folder", chosen_fo
         folder = p.parent / "Output" / datetime.now().strftime("%Y-%m-%d")
     else:
         folder = p.parent
+
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / f"{p.stem}{suffix}{p.suffix}"
+    clean_stem = sanitize_filename(p.stem)
+    suffix = str(suffix or "")
+    safe_suffix = re.sub(r'[<>:"/\\|?*]+', '_', suffix).strip()
+
+    # Avoid saving directly over the source file when suffix is blank or unsafe.
+    if not safe_suffix:
+        safe_suffix = "_Edited"
+
+    target = folder / f"{clean_stem}{safe_suffix}{p.suffix}"
+
+    try:
+        if target.resolve() == p.resolve():
+            target = folder / f"{clean_stem}_Edited{p.suffix}"
+    except Exception as exc:
+        logger.warning("Could not compare input/output paths: %s", exc)
+
     if target.exists():
         if if_exists == "Overwrite":
             return target
         if if_exists == "Ask" and messagebox.askyesno("File Exists", f"Overwrite existing file?\n{target}"):
             return target
-        base, ext, idx = folder / f"{p.stem}{suffix}", p.suffix, 1
+        base, ext, idx = folder / f"{clean_stem}{safe_suffix}", p.suffix, 1
         while True:
             candidate = Path(str(base) + f"_{idx:02d}" + ext)
             if not candidate.exists():
@@ -837,6 +861,7 @@ class PDFPartner:
         self.frame = None
         self.sidebar = None
         self.main_area = None
+        self.active_tool = "Dashboard"
         self.configure_styles()
         self.set_icon_if_available()
         self.home()
@@ -866,7 +891,30 @@ class PDFPartner:
             messagebox.showerror("Error", "Unable to open repository: " + str(exc))
 
     def sidebar_button(self, text, command):
-        btn = tk.Button(self.sidebar, text=text, command=command, anchor="w", bg=THEME["sidebar"], fg="#CBD5E1", activebackground=THEME["sidebar_hover"], activeforeground="white", relief="flat", bd=0, padx=18, pady=9, font=("Segoe UI", 10), cursor="hand2")
+        is_active = getattr(self, "active_tool", "Dashboard") == text
+        bg = THEME["sidebar_hover"] if is_active else THEME["sidebar"]
+        fg = "white" if is_active else "#CBD5E1"
+
+        def wrapped_command():
+            self.active_tool = text
+            command()
+
+        btn = tk.Button(
+            self.sidebar,
+            text=text,
+            command=wrapped_command,
+            anchor="w",
+            bg=bg,
+            fg=fg,
+            activebackground=THEME["sidebar_hover"],
+            activeforeground="white",
+            relief="flat",
+            bd=0,
+            padx=18,
+            pady=9,
+            font=("Segoe UI", 10, "bold" if is_active else "normal"),
+            cursor="hand2",
+        )
         btn.pack(fill="x")
         return btn
 
@@ -1093,7 +1141,10 @@ class PDFPartner:
         if errors:
             for e in errors:
                 logger.error(e)
-            messagebox.showwarning("Completed with Errors", f"Completed: {done}\nErrors: {len(errors)}\n\nDetails were written to the log:\n{LOG_FILE}")
+            messagebox.showwarning(
+                "Completed with Errors",
+                f"Completed: {done}\nErrors: {len(errors)}\n\nDetails were written to the log:\n{LOG_FILE}",
+            )
         else:
             logger.info("Completed %s file(s) with no errors.", done)
             messagebox.showinfo("Done", f"Successfully processed {done} PDF(s).")
@@ -1135,6 +1186,7 @@ class PDFPartner:
 
     # ---- home -----------------------------------------------------------------
     def home(self):
+        self.active_tool = "Dashboard"
         self.clear()
         f = self.main_area
         header = ttk.Frame(f, style="App.TFrame")
@@ -1197,6 +1249,20 @@ class PDFPartner:
         return card
 
     def header(self, title, subtitle=""):
+        active_map = {
+            "PDF Organiser": "PDF Organiser",
+            "Text Watermark / Heading": "Text Watermark",
+            "Page Numbering": "Page Numbering",
+            "Sign / Stamp": "Sign / Stamp",
+            "Merge PDFs": "Merge PDFs",
+            "Index Builder": "Index Builder",
+            "Split PDF": "Split PDF",
+            "Delete Pages": "Delete Pages",
+            "Rotate Pages": "Rotate Pages",
+            "Bookmark Editor": "Bookmark Editor",
+            "Metadata Editor": "Metadata Editor",
+        }
+        self.active_tool = active_map.get(title, title)
         self.clear()
         top = ttk.Frame(self.main_area, style="App.TFrame")
         top.pack(fill="x", pady=(0, 12))
