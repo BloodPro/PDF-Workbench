@@ -1,6 +1,7 @@
 # PDF-Workbench (PDF Partner)
 
 A modular PDF utility application designed for legal document workflows, particularly Indian Tribunal requirements.
+First order of business in this tool is to improve the UI, then move into improvement of existing modules and then to incorporate new modules.
 
 ## Features
 
