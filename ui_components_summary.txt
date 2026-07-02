@@ -1,0 +1,134 @@
+UI STANDARDIZATION REFACTORING - SUMMARY
+=========================================
+
+THREE NEW COMPONENTS ADDED:
+
+1. PlacementBuilder (Class)
+   Location: Before PDFPartner class (around line 800)
+   Purpose: Unified placement UI builder for overlay operations
+   Saves: ~150 lines of duplicated code
+   Used by: Text Overlay, Sign/Stamp, and future positioning modules
+   
+   Methods:
+   - __init__(parent, app, pos_var, mx_var, my_var, cx_var, cy_var)
+   - build(title="Placement", show_pages=True, pages_var=None)
+   - _rebuild_detail() [private]
+   
+   QUICK USAGE:
+   ```
+   builder = PlacementBuilder(left, self, pos, mx, my, cx, cy)
+   place_grp = builder.build(show_pages=True, pages_var=pages)
+   ```
+
+2. ButtonBar (Class)
+   Location: Before PDFPartner class
+   Purpose: Standardized button bar with consistent spacing
+   Used by: All 11 modules for action buttons
+   
+   Methods:
+   - __init__(parent, padding=(12, 0))
+   - add_left(text, command, padx=3)
+   - add_right(text, command, padx=3, primary=False)
+   - add_center(text, command, padx=3) [optional]
+   
+   QUICK USAGE:
+   ```
+   actions = ButtonBar(body)
+   actions.add_left("Clear", clear_fn)
+   actions.add_right("Apply", apply_fn)
+   ```
+
+3. MODULE_OUTPUT_SUFFIXES (Dictionary)
+   Location: After IF_EXISTS_OPTIONS constant (around line 92)
+   Purpose: Single source of truth for module output file naming
+   Maps: Module identifiers → Default output suffixes
+   
+   QUICK USAGE:
+   ```
+   suffix = MODULE_OUTPUT_SUFFIXES.get("page_numbering", "")
+   ```
+
+4. UIMessenger (Class) [OPTIONAL - For Future]
+   Location: Before PDFPartner class
+   Purpose: Centralized error, warning, info messaging
+   
+   Methods:
+   - error_validation(message, parent=None)
+   - error_file(filename, exc, parent=None)
+   - error_runtime(title, exc, include_traceback=False, parent=None)
+   - success(title, message, parent=None)
+   - success_files(count, parent=None)
+   - warning(title, message, parent=None)
+   - warning_with_details(title, count_done, count_errors, details_location, parent=None)
+   - confirm(title, message, parent=None)
+
+
+INTEGRATION CHECKLIST:
+
+[ ] Phase 1: PlacementBuilder
+    [ ] Add PlacementBuilder class
+    [ ] Refactor _text_overlay() in _text_overlay("heading") branch
+    [ ] Refactor _text_overlay() in _text_overlay("number") branch
+    [ ] Refactor sign_module()
+    [ ] Test: Text/Heading and Sign/Stamp modules
+
+[ ] Phase 2: Button Standardization & Output Suffixes
+    [ ] Add ButtonBar class
+    [ ] Replace all action button frames (11 modules)
+    [ ] Add MODULE_OUTPUT_SUFFIXES dictionary
+    [ ] Update all output_group() calls with MODULE_OUTPUT_SUFFIXES
+    [ ] Test: All modules display buttons and save files correctly
+
+[ ] Phase 3: UIMessenger (Optional, for future consistency)
+    [ ] Add UIMessenger class
+    [ ] Initialize in PDFPartner.__init__(): self.messenger = UIMessenger(root)
+    [ ] Gradually replace messagebox calls
+    [ ] Test: Error/warning/success messages display correctly
+
+
+FILE CHANGES:
+
+NEW FILES:
+  - REFACTORING_GUIDE.md (detailed integration steps)
+  - ui_components_summary.txt (this file)
+
+MODIFIED FILES:
+  - pdf_partner.py
+    + Add PlacementBuilder class (~40 lines)
+    + Add ButtonBar class (~30 lines)
+    + Add MODULE_OUTPUT_SUFFIXES dict (~15 lines)
+    + Add UIMessenger class (~50 lines, optional)
+    + Refactor modules to use new components (~200 line reduction)
+    = NET: ~140 line reduction with better structure
+
+
+TESTING:
+
+1. Placement Builder:
+   - Select different positions (Top Left, Center, Custom X/Y, etc.)
+   - Verify fields appear/disappear correctly
+   - Check preview updates in real-time
+
+2. Button Bar:
+   - Verify spacing is consistent across all modules
+   - Check buttons are properly aligned (left/right)
+   - Verify click handlers still work
+
+3. Output Suffixes:
+   - Process a file in each module
+   - Verify output file name has correct suffix
+   - Check files save to correct location
+
+4. UIMessenger:
+   - Trigger validation errors
+   - Trigger file errors
+   - Verify messages display consistently
+
+
+ESTIMATED IMPACT:
+
+Code Quality:  ★★★★★ (Single source of truth, reduced duplication)
+Maintainability: ★★★★★ (Easier to update UI consistency globally)
+Performance:   ★★★★★ (No change)
+User Experience: ★★★★☆ (Consistent spacing, familiar patterns)
+Risk Level:    ★★☆☆☆ (Low - isolated changes, no core logic affected)
