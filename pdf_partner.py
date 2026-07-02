@@ -52,6 +52,7 @@ import subprocess
 import traceback
 import tempfile
 import logging
+import webbrowser
 from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
@@ -80,8 +81,19 @@ except Exception:
     DND_AVAILABLE = False
 
 APP_NAME = "PDF Partner"
+APP_AUTHOR = "BloodPro"
+APP_REPOSITORY = "https://github.com/BloodPro/PDF-Workbench.git"
+APP_DESCRIPTION = "Professional PDF Workbench for Litigation & Documentation preparation"
+APP_COPYRIGHT = "© BloodPro"
+APP_VERSION = "1.0.0"
 SETTINGS_FILE = Path.home() / ".pdf_partner_settings.json"
 LOG_FILE = Path.home() / "PDF_Partner.log"
+
+THEME = {
+    "bg": "#F8FAFC", "surface": "#FFFFFF", "sidebar": "#0F172A", "sidebar_hover": "#1E293B",
+    "primary": "#2563EB", "primary_dark": "#1D4ED8", "text": "#0F172A", "muted": "#64748B",
+    "border": "#E2E8F0", "success": "#059669", "warning": "#D97706", "danger": "#DC2626",
+}
 MM = 72 / 25.4
 A4_W_MM, A4_H_MM = 210, 297
 
@@ -90,6 +102,12 @@ PAGE_FORMATS = ["Page {n} of {total}", "Page {n}", "- {n} -", "{n}", "Custom"]
 ROTATION_OPTIONS = ["90° clockwise", "90° counter-clockwise", "180°"]
 OUTPUT_MODES = ["Same folder", "Choose output folder", "Create Output subfolder", "Create dated output folder"]
 IF_EXISTS_OPTIONS = ["Auto-increment", "Overwrite", "Ask"]
+
+MODULE_OUTPUT_SUFFIXES = {
+    "text_heading": "_Heading", "page_numbering": "_Numbered", "sign_stamp": "_Signed",
+    "merge": "_Merged", "index": "_Indexed", "split": "_Split", "delete": "_PagesDeleted",
+    "rotate": "_Rotated", "bookmark": "_BookmarksEdited", "metadata": "_Metadata",
+}
 
 BUILTIN_FONT_DISPLAY = [
     "Built-in: Helvetica", "Built-in: Helvetica Bold", "Built-in: Helvetica Italic", "Built-in: Helvetica Bold Italic",
@@ -805,7 +823,7 @@ class ScrollableFrame(ttk.Frame):
 class PDFPartner:
     def __init__(self, root):
         self.root = root
-        self.root.title(APP_NAME)
+        self.root.title(f"{APP_NAME} - {APP_AUTHOR}")
         self.root.geometry("1280x800")
         self.root.minsize(1120, 720)
         self.settings = load_settings()
@@ -817,10 +835,60 @@ class PDFPartner:
         self._num_vcmd = (self.root.register(self._is_num_partial), "%P")
         self._preview_after = None
         self.frame = None
+        self.sidebar = None
+        self.main_area = None
+        self.configure_styles()
         self.set_icon_if_available()
         self.home()
 
     # ---- small infrastructure -------------------------------------------------
+    def configure_styles(self):
+        style = ttk.Style(self.root)
+        try:
+            if "vista" in style.theme_names():
+                style.theme_use("vista")
+        except Exception:
+            pass
+        try:
+            self.root.configure(bg=THEME["bg"])
+        except Exception:
+            pass
+        style.configure("App.TFrame", background=THEME["bg"])
+        style.configure("Header.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 24, "bold"))
+        style.configure("Subheader.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 10))
+        style.configure("Section.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 15, "bold"))
+        style.configure("Muted.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 9))
+
+    def open_repository(self):
+        try:
+            webbrowser.open(APP_REPOSITORY)
+        except Exception as exc:
+            messagebox.showerror("Error", "Unable to open repository: " + str(exc))
+
+    def sidebar_button(self, text, command):
+        btn = tk.Button(self.sidebar, text=text, command=command, anchor="w", bg=THEME["sidebar"], fg="#CBD5E1", activebackground=THEME["sidebar_hover"], activeforeground="white", relief="flat", bd=0, padx=18, pady=9, font=("Segoe UI", 10), cursor="hand2")
+        btn.pack(fill="x")
+        return btn
+
+    def build_sidebar(self):
+        tk.Label(self.sidebar, text="PDF Partner", bg=THEME["sidebar"], fg="white", font=("Segoe UI", 17, "bold"), anchor="w", padx=18, pady=16).pack(fill="x")
+        tk.Label(self.sidebar, text=f"by {APP_AUTHOR}", bg=THEME["sidebar"], fg="#94A3B8", font=("Segoe UI", 9), anchor="w", padx=18, pady=0).pack(fill="x")
+        self.sidebar_button("Dashboard", self.home)
+        groups = [
+            ("CORE PDF TOOLS", [("Merge PDFs", self.merge_module), ("Split PDF", self.split_module), ("Delete Pages", self.delete_module), ("Rotate Pages", self.rotate_module)]),
+            ("WATERMARKING", [("Text Watermark", self.text_module), ("Page Numbering", self.number_module), ("Sign / Stamp", self.sign_module)]),
+            ("LITIGATION TOOLS", [("Index Builder", self.index_module), ("Bookmark Editor", self.bookmark_module), ("PDF Organiser", self.pdf_organiser)]),
+            ("APPLICATION", [("Metadata Editor", self.metadata_module), ("Settings", self.open_settings), ("GitHub Repository", self.open_repository)]),
+        ]
+        for heading, items in groups:
+            tk.Label(self.sidebar, text=heading, bg=THEME["sidebar"], fg="#64748B", font=("Segoe UI", 8, "bold"), anchor="w", padx=18, pady=0).pack(fill="x")
+            for label, cmd in items:
+                self.sidebar_button(label, cmd)
+        footer = tk.Frame(self.sidebar, bg=THEME["sidebar"])
+        footer.pack(side="bottom", fill="x", pady=12)
+        tk.Label(footer, text=f"{APP_NAME} v{APP_VERSION}", bg=THEME["sidebar"], fg="#94A3B8", font=("Segoe UI", 8), anchor="w", padx=18).pack(fill="x")
+        tk.Label(footer, text=APP_REPOSITORY, bg=THEME["sidebar"], fg="#64748B", font=("Segoe UI", 7), anchor="w", padx=18, wraplength=190, justify="left").pack(fill="x")
+
     @staticmethod
     def _is_num_partial(proposed):
         return bool(re.match(r"^-?\d*\.?\d*$", proposed))
@@ -837,12 +905,21 @@ class PDFPartner:
 
     def clear(self):
         if self._preview_after:
-            try: self.root.after_cancel(self._preview_after)
-            except Exception: pass
+            try:
+                self.root.after_cancel(self._preview_after)
+            except Exception:
+                pass
             self._preview_after = None
-        if self.frame: self.frame.destroy()
-        self.frame = ttk.Frame(self.root, padding=16)
+        if self.frame:
+            self.frame.destroy()
+        self.frame = ttk.Frame(self.root, style="App.TFrame")
         self.frame.pack(fill="both", expand=True)
+        self.sidebar = tk.Frame(self.frame, bg=THEME["sidebar"], width=230)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+        self.main_area = ttk.Frame(self.frame, style="App.TFrame", padding=18)
+        self.main_area.pack(side="left", fill="both", expand=True)
+        self.build_sidebar()
 
     def debounced(self, preview, fn, delay=250):
         def schedule(*_):
@@ -1059,56 +1136,75 @@ class PDFPartner:
     # ---- home -----------------------------------------------------------------
     def home(self):
         self.clear()
-        f = self.frame
-        top = ttk.Frame(f); top.pack(fill="x")
-        ttk.Label(top, text="PDF Partner", font=("Segoe UI", 28, "bold")).pack(side="left")
-        ttk.Button(top, text="⚙  Settings", command=self.open_settings).pack(side="right")
-        ft = "available" if FONTTOOLS_AVAILABLE else "not installed (font names fall back to file names)"
-        dnd = "on" if DND_AVAILABLE else "off (pip install tkinterdnd2 to enable)"
-        ttk.Label(f, text=f"Modular PDF utility   |   fonttools: {ft}   |   drag-and-drop: {dnd}", foreground="#555").pack(anchor="w", pady=(2, 12))
-
+        f = self.main_area
+        header = ttk.Frame(f, style="App.TFrame")
+        header.pack(fill="x", pady=0)
+        left_head = ttk.Frame(header, style="App.TFrame")
+        left_head.pack(side="left", fill="x", expand=True)
+        ttk.Label(left_head, text="PDF Partner", style="Header.TLabel").pack(anchor="w")
+        ttk.Label(left_head, text="Professional PDF Workbench for Litigation & Documentation preparation", style="Subheader.TLabel").pack(anchor="w", pady=(2, 0))
+        right_head = ttk.Frame(header, style="App.TFrame")
+        right_head.pack(side="right")
+        ttk.Button(right_head, text="GitHub Repository", command=self.open_repository).pack(side="right", padx=8)
+        ttk.Button(right_head, text="Settings", command=self.open_settings).pack(side="right")
+        ttk.Label(f, text=f"Developer: {APP_AUTHOR}   |   Repository: {APP_REPOSITORY}", style="Muted.TLabel").pack(anchor="w", pady=0)
+        ft = "Available" if FONTTOOLS_AVAILABLE else "Not installed"
+        dnd = "Enabled" if DND_AVAILABLE else "Disabled"
+        ttk.Label(f, text=f"FontTools: {ft}   |   Drag-and-drop: {dnd}", style="Muted.TLabel").pack(anchor="w", pady=(0, 16))
         dashboard = ScrollableFrame(f)
         dashboard.pack(fill="both", expand=True)
         grid = dashboard.inner
+        self.dashboard_stats(grid)
+        self.dashboard_section(grid, "Core PDF Tools", [("Merge", "Combine PDFs in order and create bookmarks from file names.", self.merge_module), ("Split", "Split PDFs by bookmarks, fixed page count, or custom ranges.", self.split_module), ("Delete", "Delete selected pages or page ranges safely.", self.delete_module), ("Rotate", "Rotate selected, odd, even, first, last, or all pages.", self.rotate_module)])
+        self.dashboard_section(grid, "Watermarking & Stamping", [("Text Watermark", "Add file names, headings, DRAFT, CONFIDENTIAL, or custom text.", self.text_module), ("Page Numbering", "Apply professional page numbers with formatting and placement controls.", self.number_module), ("Sign / Stamp", "Apply signature, seal, or stamp images with live preview.", self.sign_module)])
+        self.dashboard_section(grid, "Litigation Tools", [("Index Builder", "Build an editable index from bookmarks or selected files.", self.index_module), ("Bookmark Editor", "View, add, edit, delete, and validate PDF bookmarks.", self.bookmark_module), ("PDF Organiser", "Arrange PDFs, edit display names, and rename files on disk.", self.pdf_organiser)])
+        self.dashboard_section(grid, "Document Properties", [("Metadata Editor", "Read, edit, clear, and batch-apply PDF metadata.", self.metadata_module)])
 
-        modules = [
-            ("PDF ORGANISER", "Arrange PDFs, edit display names, and optionally rename files on disk.", self.pdf_organiser),
-            ("TEXT WATERMARK / HEADING", "Add file names or custom text using built-in, app-folder, and Windows fonts.", self.text_module),
-            ("SIGN / STAMP", "Apply a PNG/JPG signature or seal with actual PDF page preview.", self.sign_module),
-            ("MERGE PDFS", "Merge PDFs in custom order and create bookmarks from file names.", self.merge_module),
-            ("INDEX BUILDER", "Build an editable index from bookmarks or file names and save it as a PDF page.", self.index_module),
-            ("PAGE NUMBERING", "Add page numbers using custom formats, fonts, colours and positions.", self.number_module),
-            ("SPLIT PDF", "Split by bookmarks, fixed page count, or page ranges.", self.split_module),
-            ("DELETE PAGES", "Delete selected pages or ranges and save safely as a new PDF.", self.delete_module),
-            ("ROTATE PAGES", "Rotate all/selected/odd/even/first/last pages.", self.rotate_module),
-            ("BOOKMARK EDITOR", "View, add, edit and delete bookmarks with hierarchy levels.", self.bookmark_module),
-            ("METADATA EDITOR", "Read, edit, clear and batch-apply PDF metadata.", self.metadata_module),
-        ]
-        for i, (title, desc, cmd) in enumerate(modules):
-            r, c = divmod(i, 2)
-            card = ttk.LabelFrame(grid, padding=14)
-            card.grid(row=r, column=c, sticky="nsew", padx=8, pady=8)
-            card.columnconfigure(0, weight=1)
-            ttk.Label(card, text=title, font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w", padx=2, pady=(0, 4))
-            ttk.Label(card, text=desc, wraplength=470, font=("Segoe UI", 10), foreground="#555").grid(row=1, column=0, sticky="w", padx=2)
-            tk.Button(
-                card, text="OPEN MODULE", command=cmd,
-                font=("Segoe UI", 10, "bold"), bg="#0F62FE", fg="white",
-                activebackground="#0043CE", activeforeground="white",
-                relief="raised", bd=2, cursor="hand2",
-            ).grid(row=2, column=0, sticky="ew", padx=2, pady=(12, 2))
-        grid.columnconfigure(0, weight=1, uniform="cards")
-        grid.columnconfigure(1, weight=1, uniform="cards")
+    def dashboard_stats(self, parent):
+        wrap = ttk.Frame(parent, style="App.TFrame")
+        wrap.pack(fill="x", pady=0)
+        stats = [("Files Processed", "Ready", THEME["primary"]), ("Indexes Created", "Index Builder", THEME["success"]), ("Watermarks", "Text / Page / Stamp", THEME["warning"]), ("Batch Tools", "Available", THEME["danger"])]
+        for i, (title, value, colour) in enumerate(stats):
+            card = tk.Frame(wrap, bg=THEME["surface"], highlightbackground=THEME["border"], highlightthickness=1, bd=0, padx=16, pady=12)
+            card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 8))
+            tk.Label(card, text=title, bg=THEME["surface"], fg=THEME["muted"], font=("Segoe UI", 9), anchor="w").pack(anchor="w")
+            tk.Label(card, text=value, bg=THEME["surface"], fg=colour, font=("Segoe UI", 15, "bold"), anchor="w").pack(anchor="w", pady=(4, 0))
+            wrap.columnconfigure(i, weight=1)
+
+    def dashboard_section(self, parent, title, items):
+        section = ttk.Frame(parent, style="App.TFrame")
+        section.pack(fill="x", pady=0)
+        ttk.Label(section, text=title, style="Section.TLabel").pack(anchor="w", pady=0)
+        cards = ttk.Frame(section, style="App.TFrame")
+        cards.pack(fill="x")
+        for i, (name, desc, cmd) in enumerate(items):
+            card = self.dashboard_card(cards, name, desc, cmd)
+            card.grid(row=i // 4, column=i % 4, sticky="nsew", padx=(0 if i % 4 == 0 else 8, 8), pady=4)
+            cards.columnconfigure(i % 4, weight=1)
+
+    def dashboard_card(self, parent, title, desc, command):
+        card = tk.Frame(parent, bg=THEME["surface"], highlightbackground=THEME["border"], highlightthickness=1, bd=0, padx=14, pady=12, cursor="hand2")
+        tk.Label(card, text=title, bg=THEME["surface"], fg=THEME["text"], font=("Segoe UI", 13, "bold"), anchor="w").pack(anchor="w")
+        tk.Label(card, text=desc, bg=THEME["surface"], fg=THEME["muted"], font=("Segoe UI", 9), wraplength=240, justify="left", anchor="w").pack(anchor="w", pady=0, fill="x")
+        btn = tk.Button(card, text="Open", command=command, bg=THEME["primary"], fg="white", activebackground=THEME["primary_dark"], activeforeground="white", relief="flat", bd=0, padx=12, pady=7, font=("Segoe UI", 9, "bold"), cursor="hand2")
+        btn.pack(anchor="e")
+        def click(_event):
+            command()
+        card.bind("<Button-1>", click)
+        for child in card.winfo_children():
+            if child is not btn:
+                child.bind("<Button-1>", click)
+        return card
 
     def header(self, title, subtitle=""):
         self.clear()
-        top = ttk.Frame(self.frame)
-        top.pack(fill="x", pady=(0, 10))
-        ttk.Button(top, text="← Home", command=self.home).pack(side="left")
-        ttk.Label(top, text=title, font=("Segoe UI", 18, "bold")).pack(side="left", padx=12)
+        top = ttk.Frame(self.main_area, style="App.TFrame")
+        top.pack(fill="x", pady=(0, 12))
+        ttk.Label(top, text=title, style="Header.TLabel").pack(side="left")
+        ttk.Button(top, text="Dashboard", command=self.home).pack(side="right")
         if subtitle:
-            ttk.Label(self.frame, text=subtitle, foreground="#555").pack(anchor="w", pady=(0, 10))
-        return self.frame
+            ttk.Label(self.main_area, text=subtitle, style="Subheader.TLabel").pack(anchor="w", pady=(0, 12))
+        return self.main_area
 
     def scroll_body(self, parent):
         scroll = ScrollableFrame(parent)
@@ -1121,7 +1217,7 @@ class PDFPartner:
         try: win.iconbitmap(str(app_base_dir() / "icon.ico"))
         except Exception: pass
         frm = ttk.Frame(win, padding=18); frm.pack(fill="both", expand=True)
-        ttk.Label(frm, text="Font sources", font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 8))
+        ttk.Label(frm, text="Font sources", font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=0)
         ttk.Checkbutton(frm, text="App Fonts folder", variable=self.include_app_fonts).pack(anchor="w")
         ttk.Checkbutton(frm, text="Windows fonts", variable=self.include_windows_fonts).pack(anchor="w")
         ttk.Checkbutton(frm, text="User fonts", variable=self.include_user_fonts).pack(anchor="w")
@@ -1271,7 +1367,7 @@ class PDFPartner:
 
         # Style + Output -----------------------------------------------------
         self.style_group(left, font, size, bold, underline, hexc, opacity)
-        out_mode, out_folder, suffix, if_exists = self.output_group(left, "_Numbered" if is_num else "_Heading")
+        out_mode, out_folder, suffix, if_exists = self.output_group(left, MODULE_OUTPUT_SUFFIXES["page_numbering"] if is_num else MODULE_OUTPUT_SUFFIXES["text_heading"])
 
         def fmt_string():
             return cfmt.get() if fmt.get() == "Custom" else fmt.get()
@@ -1363,7 +1459,7 @@ class PDFPartner:
                 self.row_num(detail, "Side Margin mm", mx); self.row_num(detail, "Top/Bottom Margin mm", my)
         pos.trace_add("write", rebuild_placement); rebuild_placement()
 
-        out_mode, out_folder, suffix, if_exists = self.output_group(left, "_Signed")
+        out_mode, out_folder, suffix, if_exists = self.output_group(left, MODULE_OUTPUT_SUFFIXES["sign_stamp"])
 
         def refresh_preview():
             preview.set_pdf(pdfs[0] if pdfs else "")
@@ -1623,7 +1719,7 @@ class PDFPartner:
         src_grp = self.group(body, "Source"); self.pdf_list_selector(src_grp, pdfs, on_change=lambda: update_apply())
         opt_grp = self.group(body, "Pages")
         pages = tk.StringVar(value="1"); self.row_entry(opt_grp, "Pages to Delete", pages)
-        out_mode, out_folder, suffix, if_exists = self.output_group(body, "_PagesDeleted")
+        out_mode, out_folder, suffix, if_exists = self.output_group(body, MODULE_OUTPUT_SUFFIXES["delete"])
         def run():
             pages_v = pages.get()
             def mutate(doc, pdf):
@@ -1644,7 +1740,7 @@ class PDFPartner:
         pages = tk.StringVar(value="all"); angle = tk.StringVar(value="90° clockwise")
         self.row_entry(opt_grp, "Pages", pages)
         self.row_combo(opt_grp, "Rotation", angle, ROTATION_OPTIONS)
-        out_mode, out_folder, suffix, if_exists = self.output_group(body, "_Rotated")
+        out_mode, out_folder, suffix, if_exists = self.output_group(body, MODULE_OUTPUT_SUFFIXES["rotate"])
         def degrees(): return 90 if angle.get() == "90° clockwise" else (-90 if angle.get() == "90° counter-clockwise" else 180)
         def run():
             deg = degrees(); pages_v = pages.get()
@@ -1738,7 +1834,7 @@ class PDFPartner:
         src_grp = self.group(body, "Source"); self.pdf_list_selector(src_grp, pdfs, on_change=maybe_autoload)
         fld_grp = self.group(body, "Fields")
         for k, v in fields.items(): self.row_entry(fld_grp, k.title(), v)
-        out_mode, out_folder, suffix, if_exists = self.output_group(body, "_Metadata")
+        out_mode, out_folder, suffix, if_exists = self.output_group(body, MODULE_OUTPUT_SUFFIXES["metadata"])
         def clear():
             for v in fields.values(): v.set("")
         def apply():
