@@ -2,13 +2,17 @@ import sys
 from unittest.mock import MagicMock
 
 # Mock GUI and PDF dependencies if not installed in headless Linux test env
-for mod in ["tkinter", "tkinter.font", "tkinter.ttk", "tkinter.filedialog", "tkinter.messagebox", "tkinter.simpledialog", "tkinter.colorchooser", "fitz", "PIL"]:
+for mod in [
+    "tkinter", "tkinter.font", "tkinter.ttk", "tkinter.filedialog",
+    "tkinter.messagebox", "tkinter.simpledialog", "tkinter.colorchooser",
+    "fitz", "PIL", "tkinterdnd2"
+]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
 
 import pytest
 from pathlib import Path
-from pdf_partner import (
+from pdf_partner_app.utils.helpers import (
     parse_pages,
     sanitize_filename,
     clean_title,
@@ -17,7 +21,11 @@ from pdf_partner import (
     safe_float,
     apply_bold,
     resolve_output_path,
+)
+from pdf_partner_app.core.engine import (
     index_rows_from_files,
+    place_box,
+    text_width,
 )
 
 def test_parse_pages():
@@ -50,13 +58,11 @@ def test_safe_int_and_float():
     assert safe_float("abc", default=1.0) == 1.0
 
 def test_apply_bold():
-    # Built-in font helv -> hebo
     name, fpath, fake = apply_bold("helv", None, True)
     assert name == "hebo"
     assert fpath is None
     assert fake is False
 
-    # External font -> synthetic bold
     name, fpath, fake = apply_bold("customfont", "/path/font.ttf", True)
     assert name == "customfont"
     assert fpath == "/path/font.ttf"
@@ -66,12 +72,10 @@ def test_resolve_output_path(tmp_path):
     input_file = tmp_path / "doc.pdf"
     input_file.write_text("fake pdf content")
 
-    # Output in same folder with suffix
     out_path = resolve_output_path(input_file, "_Numbered", "Same folder")
     assert out_path.name == "doc_Numbered.pdf"
     assert out_path.parent == tmp_path
 
-    # Output in subfolder
     sub_out = resolve_output_path(input_file, "_Numbered", "Create Output subfolder")
     assert sub_out.parent == tmp_path / "Output"
 
@@ -82,3 +86,9 @@ def test_index_rows_from_files():
     assert rows[0][1] == "Appeal Brief"
     assert rows[1][1] == "Annexure A"
     assert warn == ""
+
+def test_place_box_positions():
+    w, h, iw, ih = 100, 200, 20, 10
+    assert place_box(w, h, iw, ih, "Top Left", 5, 5, 0, 0) == (5, 5)
+    assert place_box(w, h, iw, ih, "Center", 5, 5, 0, 0) == (40, 95)
+    assert place_box(w, h, iw, ih, "Bottom Right", 5, 5, 0, 0) == (75, 185)

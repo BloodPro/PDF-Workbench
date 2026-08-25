@@ -13,35 +13,6 @@ Build EXE with icon:
     python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico pdf_partner.py
 If you installed tkinterdnd2, add it to the build:
     python -m PyInstaller --onefile --windowed --name PDF_Partner --collect-all tkinterdnd2 pdf_partner.py
-
-UI / workflow changes in this revision
----------------------------------------
-* Progressive disclosure: every "Custom ..." field and the Output Folder picker
-  appear only when their trigger is selected; placement fields follow the chosen
-  position (and disappear entirely for "Center", which ignores margins).
-* Grouped sections (Source / Placement / Style / Output) and a collapsible
-  "Output options" panel keep each screen short.
-* Colour swatch opens the OS colour picker; opacity is a slider.
-* Live, debounced preview - the "Refresh Preview" button is gone.
-* Drag-and-drop files onto the lists (auto-enabled if tkinterdnd2 is installed,
-  silently disabled otherwise - no hard dependency).
-* Rotate uses the same single "Pages" field as every other module.
-* "Bold" replaces "Fake Bold": real bold for built-in fonts, synthetic for
-  external ones. Font-source configuration moved to a Settings dialog.
-* Quality: central rolling log file, reserved-Windows-name guard, Merge defaults
-  to Documents, page lists accept combinations like "first,last,3-5,odd",
-  bookmark hierarchy is validated before saving, metadata auto-loads on add.
-
-Litigation-workflow additions in this revision
------------------------------------------------
-* INDEX BUILDER: builds an editable table (Sr | Particulars | From | To) from a
-  single file's top-level bookmarks, or from several files' names; you can edit
-  any row, then Preview, Save as a standalone Index PDF, or Prepend it to a PDF
-  (bookmarks are re-pointed and the index page is left un-numbered, so body
-  numbering still starts at 1).
-* Diagonal watermark option in Text / Heading (centered, 45°) for DRAFT /
-  CONFIDENTIAL style stamps.
-* Drag-to-reorder in Merge and the Organiser (in addition to Move Up/Down).
 """
 
 import os
@@ -52,11 +23,9 @@ import subprocess
 import traceback
 import tempfile
 import logging
+import threading
 import webbrowser
-from functools import lru_cache
 from pathlib import Path
-from datetime import datetime
-from logging.handlers import RotatingFileHandler
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
@@ -64,587 +33,27 @@ from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 from PIL import Image, ImageTk
 import fitz  # PyMuPDF
 
-try:
-    from fontTools.ttLib import TTFont, TTCollection
-    FONTTOOLS_AVAILABLE = True
-except Exception:
-    TTFont = None
-    TTCollection = None
-    FONTTOOLS_AVAILABLE = False
-
-try:
-    from tkinterdnd2 import TkinterDnD, DND_FILES
-    DND_AVAILABLE = True
-except Exception:
-    TkinterDnD = None
-    DND_FILES = None
-    DND_AVAILABLE = False
-
-APP_NAME = "PDF Partner"
-APP_AUTHOR = "BloodPro"
-APP_REPOSITORY = "https://github.com/BloodPro/PDF-Workbench.git"
-APP_DESCRIPTION = "Professional PDF Workbench for Litigation & Documentation preparation"
-APP_COPYRIGHT = "© BloodPro"
-APP_VERSION = "1.0.2"
-SETTINGS_FILE = Path.home() / ".pdf_partner_settings.json"
-LOG_FILE = Path.home() / "PDF_Partner.log"
-
-THEME = {
-    "bg": "#F8FAFC", "surface": "#FFFFFF", "sidebar": "#0F172A", "sidebar_hover": "#1E293B",
-    "primary": "#2563EB", "primary_dark": "#1D4ED8", "text": "#0F172A", "muted": "#64748B",
-    "border": "#E2E8F0", "success": "#059669", "warning": "#D97706", "danger": "#DC2626",
-}
-MM = 72 / 25.4
-A4_W_MM, A4_H_MM = 210, 297
-
-POSITIONS = ["Top Left", "Top Center", "Top Right", "Center", "Bottom Left", "Bottom Center", "Bottom Right", "Custom X/Y"]
-PAGE_FORMATS = ["Page {n} of {total}", "Page {n}", "- {n} -", "{n}", "Custom"]
-ROTATION_OPTIONS = ["90° clockwise", "90° counter-clockwise", "180°"]
-OUTPUT_MODES = ["Same folder", "Choose output folder", "Create Output subfolder", "Create dated output folder"]
-IF_EXISTS_OPTIONS = ["Auto-increment", "Overwrite", "Ask"]
-
-MODULE_OUTPUT_SUFFIXES = {
-    "text_heading": "_Heading", "page_numbering": "_Numbered", "sign_stamp": "_Signed",
-    "merge": "_Merged", "index": "_Indexed", "split": "_Split", "delete": "_PagesDeleted",
-    "rotate": "_Rotated", "bookmark": "_BookmarksEdited", "metadata": "_Metadata",
-}
-
-BUILTIN_FONT_DISPLAY = [
-    "Built-in: Helvetica", "Built-in: Helvetica Bold", "Built-in: Helvetica Italic", "Built-in: Helvetica Bold Italic",
-    "Built-in: Times Roman", "Built-in: Times Bold", "Built-in: Times Italic", "Built-in: Times Bold Italic",
-    "Built-in: Courier", "Built-in: Courier Bold", "Built-in: Courier Italic", "Built-in: Courier Bold Italic",
-]
-BUILTIN_FONT_CODES = {
-    "Built-in: Helvetica": "helv", "Built-in: Helvetica Bold": "hebo", "Built-in: Helvetica Italic": "heit", "Built-in: Helvetica Bold Italic": "hebi",
-    "Built-in: Times Roman": "tiro", "Built-in: Times Bold": "tibo", "Built-in: Times Italic": "tiit", "Built-in: Times Bold Italic": "tibi",
-    "Built-in: Courier": "cour", "Built-in: Courier Bold": "cobo", "Built-in: Courier Italic": "coit", "Built-in: Courier Bold Italic": "cobi",
-}
-# Maps each built-in code to its bold counterpart (already-bold map to themselves).
-BOLD_MAP = {
-    "helv": "hebo", "heit": "hebi", "tiro": "tibo", "tiit": "tibi", "cour": "cobo", "coit": "cobi",
-    "hebo": "hebo", "hebi": "hebi", "tibo": "tibo", "tibi": "tibi", "cobo": "cobo", "cobi": "cobi",
-}
-FONT_PATTERNS = ("*.ttf", "*.otf", "*.ttc", "*.otc", "*.TTF", "*.OTF", "*.TTC", "*.OTC")
-RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
-
-logger = logging.getLogger("pdf_partner")
-
-
-def setup_logging():
-    try:
-        logger.setLevel(logging.INFO)
-        if not logger.handlers:
-            handler = RotatingFileHandler(LOG_FILE, maxBytes=512 * 1024, backupCount=2, encoding="utf-8")
-            handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)s  %(message)s"))
-            logger.addHandler(handler)
-    except Exception as exc:
-        logging.basicConfig(level=logging.INFO)
-        logger.warning("Failed to initialize file logger: %s", exc)
-
-
-def app_base_dir():
-    return Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-
-
-def app_fonts_dir():
-    p = app_base_dir() / "Fonts"
-    try:
-        p.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        logger.debug("Unable to create app fonts directory: %s", exc)
-    return p
-
-
-def windows_fonts_dir():
-    return Path(os.environ.get("WINDIR", "C:\\Windows")) / "Fonts"
-
-
-def user_fonts_dir():
-    local = os.environ.get("LOCALAPPDATA")
-    return Path(local) / "Microsoft" / "Windows" / "Fonts" if local else None
-
-
-def documents_dir():
-    docs = Path.home() / "Documents"
-    return docs if docs.exists() else Path.home()
-
-
-def load_settings():
-    try:
-        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8")) if SETTINGS_FILE.exists() else {}
-    except Exception as exc:
-        logger.warning("Failed to load settings from %s: %s", SETTINGS_FILE, exc)
-        return {}
-
-
-def save_settings(settings):
-    try:
-        SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("Failed to save settings to %s: %s", SETTINGS_FILE, exc)
-
-
-def open_folder(path):
-    try:
-        os.startfile(str(path))
-    except Exception:
-        try:
-            subprocess.Popen(["explorer", str(path)])
-        except Exception as exc:
-            messagebox.showerror("Error", f"Unable to open folder:\n{exc}")
-
-
-def safe_float(value, default=0.0):
-    try:
-        return float(str(value).strip())
-    except Exception:
-        return default
-
-
-def safe_int(value, default=0):
-    try:
-        return int(float(str(value).strip()))
-    except Exception:
-        return default
-
-
-def sanitize_filename(name):
-    name = re.sub(r'[<>:"/\\|?*]+', '_', str(name)).strip().rstrip('. ')
-    if not name:
-        return "Untitled"
-    if name.split('.')[0].upper() in RESERVED_NAMES:
-        name = "_" + name
-    return name[:170]
-
-
-def clean_title(path):
-    return re.sub(r"\s+", " ", Path(path).stem.replace("_", " ")).strip()
-
-
-def hex_to_rgb01(hex_colour):
-    if not re.match(r"^#[0-9a-fA-F]{6}$", str(hex_colour)):
-        hex_colour = "#000000"
-    return tuple(int(hex_colour[1 + i:3 + i], 16) / 255 for i in (0, 2, 4))
-
-
-def formal_font_name_from_font(font_obj):
-    try:
-        table = font_obj["name"]
-        for name_id in [4, 6, 1]:
-            values = []
-            for rec in table.names:
-                if rec.nameID == name_id:
-                    try:
-                        txt = rec.toUnicode().strip()
-                        if txt and txt not in values:
-                            values.append(txt)
-                    except Exception:
-                        pass
-            if values:
-                for value in values:
-                    if re.search(r"[A-Za-z]", value):
-                        return value
-                return values[0]
-    except Exception:
-        pass
-    return ""
-
-
-def get_formal_font_name(font_path):
-    p = Path(font_path)
-    if not FONTTOOLS_AVAILABLE:
-        return p.stem.replace("_", " ").replace("-", " ").strip()
-    try:
-        if p.suffix.lower() in [".ttc", ".otc"]:
-            col = TTCollection(str(p), lazy=True)
-            if col.fonts:
-                name = formal_font_name_from_font(col.fonts[0])
-                if name:
-                    return name
-        else:
-            font = TTFont(str(p), lazy=True)
-            name = formal_font_name_from_font(font)
-            try:
-                font.close()
-            except Exception:
-                pass
-            if name:
-                return name
-    except Exception:
-        pass
-    return p.stem.replace("_", " ").replace("-", " ").strip()
-
-
-def scan_fonts_folder(folder, label):
-    results = {}
-    folder = Path(folder) if folder else None
-    if not folder or not folder.exists():
-        return results
-    for pattern in FONT_PATTERNS:
-        for fp in folder.glob(pattern):
-            display = f"{label}: {get_formal_font_name(fp)}"
-            original, n = display, 2
-            while display in results:
-                display = f"{original} ({n})"
-                n += 1
-            results[display] = str(fp)
-    return results
-
-
-@lru_cache(maxsize=None)
-def scan_external_fonts(include_app=True, include_windows=True, include_user=True):
-    # Cached: scanning Windows\Fonts and parsing every face is expensive. The
-    # Settings dialog calls scan_external_fonts.cache_clear() to force a rescan.
-    fonts = {}
-    if include_app:
-        fonts.update(scan_fonts_folder(app_fonts_dir(), "App Font"))
-    if include_windows:
-        fonts.update(scan_fonts_folder(windows_fonts_dir(), "Windows Font"))
-    if include_user and user_fonts_dir():
-        fonts.update(scan_fonts_folder(user_fonts_dir(), "User Font"))
-    return dict(sorted(fonts.items(), key=lambda kv: kv[0].lower()))
-
-
-def all_font_options(include_app=True, include_windows=True, include_user=True):
-    return BUILTIN_FONT_DISPLAY + list(scan_external_fonts(include_app, include_windows, include_user).keys())
-
-
-def font_for_selection(selection, include_app=True, include_windows=True, include_user=True):
-    if selection in BUILTIN_FONT_CODES:
-        return BUILTIN_FONT_CODES[selection], None
-    return "customfont", scan_external_fonts(include_app, include_windows, include_user).get(selection)
-
-
-def apply_bold(fontname, fontfile, bold):
-    """Return (fontname, fontfile, fake_bold). For built-ins, switch to the bold
-    code; for external fonts there is no real bold, so request a synthetic one."""
-    if not bold:
-        return fontname, fontfile, False
-    if fontfile:
-        return fontname, fontfile, True
-    return BOLD_MAP.get(fontname, fontname), None, False
-
-
-def choose_pdfs(parent, multiple=True, title="Select PDF file(s)"):
-    opts = dict(parent=parent, title=title, initialdir=str(documents_dir()), filetypes=[("PDF files", ("*.pdf", "*.PDF")), ("All files", "*.*")])
-    if multiple:
-        return [f for f in filedialog.askopenfilenames(**opts) if Path(f).suffix.lower() == ".pdf"]
-    f = filedialog.askopenfilename(**opts)
-    return f if f and Path(f).suffix.lower() == ".pdf" else ""
-
-
-def choose_image(parent):
-    f = filedialog.askopenfilename(parent=parent, title="Select image", initialdir=str(Path.home() / "Pictures"), filetypes=[("Images", ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG")), ("All files", "*.*")])
-    return f if f and Path(f).suffix.lower() in [".png", ".jpg", ".jpeg"] else ""
-
-
-def parse_pages(text, total):
-    """Accepts 'all', keywords (odd/even/first/last) and ranges, freely combined,
-    e.g. 'first,last,3-5,odd'. Returns 0-based page indices."""
-    text = str(text).strip().lower()
-    if not text or text == "all":
-        return list(range(total))
-    pages = set()
-    for part in text.split(','):
-        part = part.strip()
-        if not part:
-            continue
-        if part == "all":
-            pages.update(range(total))
-        elif part == "odd":
-            pages.update(i for i in range(total) if (i + 1) % 2 == 1)
-        elif part == "even":
-            pages.update(i for i in range(total) if (i + 1) % 2 == 0)
-        elif part == "first":
-            if total:
-                pages.add(0)
-        elif part == "last":
-            if total:
-                pages.add(total - 1)
-        elif '-' in part:
-            a, b = part.split('-', 1)
-            a, b = safe_int(a, 1), safe_int(b, total)
-            for n in range(max(1, a), min(total, b) + 1):
-                pages.add(n - 1)
-        else:
-            n = safe_int(part, 0)
-            if 1 <= n <= total:
-                pages.add(n - 1)
-    return sorted(pages)
-
-
-def resolve_output_path(input_path, suffix, output_mode="Same folder", chosen_folder="", if_exists="Auto-increment"):
-    """Resolve a safe output path for a processed PDF.
-
-    v1.0.2 safety improvements:
-    - sanitises the source stem and suffix;
-    - creates output folders safely;
-    - prevents accidental overwrite of the original input file;
-    - auto-increments when required.
-    """
-    p = Path(input_path)
-    if output_mode == "Choose output folder" and chosen_folder:
-        folder = Path(chosen_folder)
-    elif output_mode == "Create Output subfolder":
-        folder = p.parent / "Output"
-    elif output_mode == "Create dated output folder":
-        folder = p.parent / "Output" / datetime.now().strftime("%Y-%m-%d")
-    else:
-        folder = p.parent
-
-    folder.mkdir(parents=True, exist_ok=True)
-    clean_stem = sanitize_filename(p.stem)
-    suffix = str(suffix or "")
-    safe_suffix = re.sub(r'[<>:"/\\|?*]+', '_', suffix).strip()
-
-    # Avoid saving directly over the source file when suffix is blank or unsafe.
-    if not safe_suffix:
-        safe_suffix = "_Edited"
-
-    target = folder / f"{clean_stem}{safe_suffix}{p.suffix}"
-
-    try:
-        if target.resolve() == p.resolve():
-            target = folder / f"{clean_stem}_Edited{p.suffix}"
-    except Exception as exc:
-        logger.warning("Could not compare input/output paths: %s", exc)
-
-    if target.exists():
-        if if_exists == "Overwrite":
-            return target
-        if if_exists == "Ask" and messagebox.askyesno("File Exists", f"Overwrite existing file?\n{target}"):
-            return target
-        base, ext, idx = folder / f"{clean_stem}{safe_suffix}", p.suffix, 1
-        while True:
-            candidate = Path(str(base) + f"_{idx:02d}" + ext)
-            if not candidate.exists():
-                return candidate
-            idx += 1
-    return target
-
-
-def text_width(text, size, fontname="helv"):
-    try:
-        if fontname != "customfont":
-            return fitz.get_text_length(text, fontname=fontname, fontsize=size)
-    except Exception:
-        pass
-    return len(text) * size * 0.52
-
-
-def place_box(w, h, iw, ih, pos, m_side, m_tb, cx, cy):
-    """Top-left (x, y) of an iw*ih item inside a w*h container. All arguments
-    share one unit (points for output, pixels for preview)."""
-    if pos == "Top Left":        return m_side, m_tb
-    if pos == "Top Center":      return (w - iw) / 2, m_tb
-    if pos == "Top Right":       return w - m_side - iw, m_tb
-    if pos == "Center":          return (w - iw) / 2, (h - ih) / 2
-    if pos == "Bottom Left":     return m_side, h - m_tb - ih
-    if pos == "Bottom Center":   return (w - iw) / 2, h - m_tb - ih
-    if pos == "Bottom Right":    return w - m_side - iw, h - m_tb - ih
-    return cx, h - cy - ih  # Custom X/Y (cx from left, cy from bottom)
-
-
-def text_point(w, h, tw, size, pos, mx, my, cx, cy):
-    x, y = place_box(w, h, tw, size, pos, mx * MM, my * MM, cx * MM, cy * MM)
-    return fitz.Point(max(0, x), max(size, min(h, y + size)))
-
-
-def image_rect(w, h, iw, ih, pos, mx, my, cx, cy):
-    x, y = place_box(w, h, iw, ih, pos, mx * MM, my * MM, cx * MM, cy * MM)
-    x, y = max(0, min(x, w - iw)), max(0, min(y, h - ih))
-    return fitz.Rect(x, y, x + iw, y + ih)
-
-
-def insert_text(page, text, pt, size, fontname, fontfile, colour, opacity, underline=False, fake_bold=False):
-    kwargs = dict(fontsize=size, color=colour, overlay=True)
-    try: kwargs["fill_opacity"] = opacity
-    except Exception: pass
-    try:
-        if fontfile: page.insert_text(pt, text, fontname="customfont", fontfile=fontfile, **kwargs)
-        else: page.insert_text(pt, text, fontname=fontname, **kwargs)
-    except TypeError:
-        kwargs.pop("fill_opacity", None)
-        if fontfile: page.insert_text(pt, text, fontname="customfont", fontfile=fontfile, **kwargs)
-        else: page.insert_text(pt, text, fontname=fontname, **kwargs)
-    if fake_bold and fontfile:
-        try: page.insert_text(fitz.Point(pt.x + 0.25, pt.y), text, fontname="customfont", fontfile=fontfile, **kwargs)
-        except Exception: pass
-    if underline:
-        tw = text_width(text, size, fontname if not fontfile else "helv")
-        sh = page.new_shape(); y = pt.y + 1.5
-        sh.draw_line(fitz.Point(pt.x, y), fitz.Point(pt.x + tw, y))
-        try: sh.finish(color=colour, width=max(0.5, size / 18), stroke_opacity=opacity)
-        except TypeError: sh.finish(color=colour, width=max(0.5, size / 18))
-        sh.commit(overlay=True)
-
-
-def insert_diagonal_text(page, text, fontname, fontfile, fontsize, colour, opacity, angle=45):
-    """Centered watermark text rotated by `angle` degrees across the page.
-    Used for DRAFT / CONFIDENTIAL style watermarks. Vector text via TextWriter;
-    falls back to plain centered text if rotation is unavailable."""
-    rect = page.rect
-    try:
-        font = fitz.Font(fontfile=fontfile) if fontfile else fitz.Font(fontname)
-    except Exception:
-        try: font = fitz.Font("helv")
-        except Exception: font = None
-    try:
-        tlen = font.text_length(text, fontsize=fontsize) if font else len(text) * fontsize * 0.5
-    except Exception:
-        tlen = len(text) * fontsize * 0.5
-    cx, cy = rect.width / 2, rect.height / 2
-    start = fitz.Point(cx - tlen / 2, cy + fontsize * 0.35)
-    try:
-        writer = fitz.TextWriter(rect)
-        if font:
-            writer.append(start, text, font=font, fontsize=fontsize)
-        else:
-            writer.append(start, text, fontsize=fontsize)
-        morph = (fitz.Point(cx, cy), fitz.Matrix(angle))
-        try:
-            writer.write_text(page, color=colour, opacity=opacity, morph=morph)
-        except TypeError:
-            writer.write_text(page, color=colour, morph=morph)
-    except Exception:
-        try:
-            page.insert_text(fitz.Point(cx - tlen / 2, cy), text, fontname=(fontname if not fontfile else "helv"), fontsize=fontsize, color=colour, overlay=True)
-        except Exception:
-            pass
-
-
-def wrap_text(measure_font, fontsize, text, max_w):
-    words = str(text).split()
-    if not words:
-        return [""]
-    lines, cur = [], words[0]
-    for w in words[1:]:
-        trial = cur + " " + w
-        try:
-            fits = measure_font.text_length(trial, fontsize=fontsize) <= max_w
-        except Exception:
-            fits = len(trial) * fontsize * 0.5 <= max_w
-        if fits:
-            cur = trial
-        else:
-            lines.append(cur); cur = w
-    lines.append(cur)
-    return lines
-
-
-def index_rows_from_pdf(path):
-    """Build index rows from a single PDF's top-level bookmarks.
-    Returns (rows, warning). Each row = [sr, particulars, from_page, to_page]."""
-    with fitz.open(path) as doc:
-        total = len(doc)
-        toc = doc.get_toc()
-    top = [(t, p) for lvl, t, p, *_ in toc if lvl == 1]
-    if not top:
-        return [[1, clean_title(path), 1, total]], ("This PDF has no bookmarks, so the index could not be built from them. "
-                                                     "A single row for the whole file was added - edit it as needed.")
-    rows = []
-    for i, (t, p) in enumerate(top):
-        nxt = top[i + 1][1] - 1 if i + 1 < len(top) else total
-        rows.append([i + 1, t, p, nxt])
-    return rows, ""
-
-
-def index_rows_from_files(paths):
-    """Build index rows from several files: particulars = file name, page ranges
-    from cumulative page counts (as if the files were merged in this order)."""
-    rows, start = [], 1
-    for i, fp in enumerate(paths, 1):
-        try:
-            with fitz.open(fp) as d: n = len(d)
-        except Exception:
-            n = 0
-        end = start + n - 1 if n else start
-        rows.append([i, clean_title(fp), start, end])
-        start += max(0, n)
-    return rows, ""
-
-
-def render_index_pdf(rows, page_w=595, page_h=842, title="INDEX"):
-    """Render index rows into an in-memory fitz.Document (A4 by default).
-    Columns: Sr | Particulars | From | To. Wraps long particulars and paginates."""
-    doc = fitz.open()
-    L, R, T, B = 50, 50, 60, 55
-    col_sr, col_num, pad = 45, 55, 6
-    x0 = L
-    x1 = L + col_sr
-    x2 = page_w - R - 2 * col_num
-    x3 = page_w - R - col_num
-    x4 = page_w - R
-    part_w = x2 - x1 - 2 * pad
-    body_size, line_h, header_size, title_size = 10, 14, 11, 16
-    try:
-        measure = fitz.Font("helv")
-    except Exception:
-        measure = None
-
-    def measure_len(txt, size):
-        try:
-            return measure.text_length(txt, fontsize=size) if measure else len(txt) * size * 0.5
-        except Exception:
-            return len(txt) * size * 0.5
-
-    def draw_header(pg, y):
-        hh = line_h + 6
-        sh = pg.new_shape()
-        sh.draw_rect(fitz.Rect(x0, y, x4, y + hh))
-        for xx in (x1, x2, x3):
-            sh.draw_line(fitz.Point(xx, y), fitz.Point(xx, y + hh))
-        sh.finish(width=0.8, color=(0, 0, 0))
-        sh.commit()
-        ty = y + hh - 6
-        pg.insert_text(fitz.Point(x0 + pad, ty), "Sr", fontname="hebo", fontsize=header_size)
-        pg.insert_text(fitz.Point(x1 + pad, ty), "Particulars", fontname="hebo", fontsize=header_size)
-        pg.insert_text(fitz.Point(x2 + pad, ty), "From", fontname="hebo", fontsize=header_size)
-        pg.insert_text(fitz.Point(x3 + pad, ty), "To", fontname="hebo", fontsize=header_size)
-        return y + hh
-
-    pg = doc.new_page(width=page_w, height=page_h)
-    tw = measure_len(title, title_size)
-    pg.insert_text(fitz.Point((page_w - tw) / 2, T), title, fontname="hebo", fontsize=title_size)
-    y = draw_header(pg, T + 26)
-
-    for sr, particulars, frm, to in rows:
-        lines = wrap_text(measure, body_size, particulars, part_w) if measure else [str(particulars)]
-        lines = lines or [""]
-        rh = max(line_h + 6, len(lines) * line_h + 8)
-        if y + rh > page_h - B:
-            pg = doc.new_page(width=page_w, height=page_h)
-            y = draw_header(pg, T)
-        sh = pg.new_shape()
-        sh.draw_rect(fitz.Rect(x0, y, x4, y + rh))
-        for xx in (x1, x2, x3):
-            sh.draw_line(fitz.Point(xx, y), fitz.Point(xx, y + rh))
-        sh.finish(width=0.6, color=(0, 0, 0))
-        sh.commit()
-        srtxt = str(sr); sw = measure_len(srtxt, body_size)
-        pg.insert_text(fitz.Point(x0 + (col_sr - sw) / 2, y + line_h), srtxt, fontname="helv", fontsize=body_size)
-        ty = y + line_h
-        for ln in lines:
-            pg.insert_text(fitz.Point(x1 + pad, ty), ln, fontname="helv", fontsize=body_size); ty += line_h
-        for xx, cw, val in ((x2, col_num, str(frm)), (x3, col_num, str(to))):
-            vw = measure_len(val, body_size)
-            pg.insert_text(fitz.Point(xx + (cw - vw) / 2, y + line_h), val, fontname="helv", fontsize=body_size)
-        y += rh
-    return doc
-
-
-def parse_drop_paths(data):
-    """tkdnd <<Drop>> data is space separated, with {braces} around paths
-    containing spaces. Returns only the PDF paths."""
-    tokens = re.findall(r"\{[^}]*\}|\S+", str(data))
-    paths = [t[1:-1] if t.startswith("{") and t.endswith("}") else t for t in tokens]
-    return paths
+from pdf_partner_app.utils.config import (
+    APP_NAME, APP_AUTHOR, APP_REPOSITORY, APP_DESCRIPTION, APP_VERSION,
+    THEME, MM, A4_W_MM, A4_H_MM, POSITIONS, PAGE_FORMATS, ROTATION_OPTIONS,
+    OUTPUT_MODES, IF_EXISTS_OPTIONS, MODULE_OUTPUT_SUFFIXES, MODULE_CATEGORIES,
+    LOG_FILE, logger, setup_logging
+)
+from pdf_partner_app.utils.helpers import (
+    app_base_dir, app_fonts_dir, documents_dir, load_settings, save_settings,
+    open_folder, safe_float, safe_int, sanitize_filename, clean_title,
+    hex_to_rgb01, scan_external_fonts, all_font_options, font_for_selection,
+    apply_bold, parse_pages, resolve_output_path, parse_drop_paths,
+    FONTTOOLS_AVAILABLE, DND_AVAILABLE, TkinterDnD, DND_FILES
+)
+from pdf_partner_app.core.engine import (
+    text_width, text_point, image_rect, insert_text, insert_diagonal_text,
+    index_rows_from_pdf, index_rows_from_files, render_index_pdf
+)
+from pdf_partner_app.ui.widgets import Collapsible, PDFPreview, ScrollableFrame
 
 
 def preview_font_spec(selection, bold, size):
-    """Best-effort Tk font (family, size, style) so the preview reflects the
-    chosen font, Bold, and italic. Built-ins map to close Windows families;
-    external fonts use their family name (Tk substitutes if it isn't installed)."""
     fs = max(6, int(size * 0.85))
     name = selection or ""
     low = name.lower()
@@ -654,8 +63,8 @@ def preview_font_spec(selection, bold, size):
         family = "Courier New"
     elif "times" in low:
         family = "Times New Roman"
-    elif "helvetica" in low or selection in BUILTIN_FONT_CODES:
-        family = "Arial"  # Helvetica's closest Windows match
+    elif "helvetica" in low:
+        family = "Arial"
     else:
         family = name.split(":", 1)[-1].strip()
         for word in ("Bold", "Italic", "Oblique", "Regular", "Light", "Medium", "SemiBold", "Semibold", "Black", "Thin"):
@@ -663,188 +72,6 @@ def preview_font_spec(selection, bold, size):
         family = re.sub(r"\s+", " ", family).strip() or "Segoe UI"
     style = " ".join(s for s, on in (("bold", is_bold), ("italic", italic)) if on)
     return (family, fs, style) if style else (family, fs)
-
-
-class Collapsible(ttk.Frame):
-    def __init__(self, parent, title, expanded=False):
-        super().__init__(parent)
-        self.title = title
-        self._open = expanded
-        self.btn = ttk.Button(self, text=self._label(), command=self.toggle, style="Toolbutton")
-        self.btn.pack(fill="x")
-        self.body = ttk.Frame(self, padding=(0, 4, 0, 0))
-        if expanded:
-            self.body.pack(fill="x")
-
-    def _label(self):
-        return ("▾  " if self._open else "▸  ") + self.title
-
-    def toggle(self):
-        self._open = not self._open
-        self.btn.configure(text=self._label())
-        if self._open:
-            self.body.pack(fill="x")
-        else:
-            self.body.pack_forget()
-
-
-class PDFPreview(ttk.LabelFrame):
-    CANVAS_W, CANVAS_H = 360, 500
-
-    def __init__(self, parent):
-        super().__init__(parent, text="Preview", padding=8)
-        self.canvas = tk.Canvas(self, width=self.CANVAS_W, height=self.CANVAS_H, bg="#f0f0f0", highlightthickness=1, highlightbackground="#999")
-        self.canvas.pack()
-        self.img_ref = None
-        self.img_ref_overlay = None
-        self.pdf_path = ""
-        self.page_index = 0
-        self.page_w_mm, self.page_h_mm = A4_W_MM, A4_H_MM
-        nav = ttk.Frame(self); nav.pack(fill="x", pady=(6, 0))
-        ttk.Button(nav, text="Prev", command=self.prev_page).pack(side="left")
-        ttk.Button(nav, text="Next", command=self.next_page).pack(side="left", padx=4)
-        self.page_label = ttk.Label(nav, text="Blank A4"); self.page_label.pack(side="left", padx=8)
-        self.overlay_callback = None
-
-    def set_pdf(self, pdf_path, overlay_callback=None):
-        self.pdf_path = pdf_path or ""; self.page_index = 0; self.overlay_callback = overlay_callback; self.render()
-
-    def prev_page(self):
-        if self.pdf_path and self.page_index > 0:
-            self.page_index -= 1; self.render()
-
-    def next_page(self):
-        if self.pdf_path:
-            try:
-                with fitz.open(self.pdf_path) as doc: total = len(doc)
-                if self.page_index < total - 1:
-                    self.page_index += 1; self.render()
-            except Exception as exc:
-                logger.debug("Failed to navigate to next page: %s", exc)
-
-    def blank_page(self):
-        self.canvas.delete("all")
-        self.page_w_mm, self.page_h_mm = A4_W_MM, A4_H_MM
-        cw, ch, margin = self.CANVAS_W, self.CANVAS_H, 18
-        pw = cw - 2 * margin; ph = pw * A4_H_MM / A4_W_MM
-        if ph > ch - 2 * margin:
-            ph = ch - 2 * margin; pw = ph * A4_W_MM / A4_H_MM
-        px, py = (cw - pw) / 2, (ch - ph) / 2
-        self.canvas.create_rectangle(px, py, px + pw, py + ph, fill="white", outline="#444")
-        self.page_label.configure(text="Blank A4")
-        return px, py, pw, ph
-
-    def render(self):
-        self.canvas.delete("all")
-        if not self.pdf_path or not Path(self.pdf_path).exists():
-            px, py, pw, ph = self.blank_page()
-            if self.overlay_callback: self.overlay_callback(self, px, py, pw, ph)
-            return px, py, pw, ph
-        try:
-            with fitz.open(self.pdf_path) as doc:
-                page = doc[self.page_index]
-                pix = page.get_pixmap(matrix=fitz.Matrix(0.8, 0.8), alpha=False)
-                # Actual page size in mm (so the preview is correct for any size).
-                self.page_w_mm = (pix.width / 0.8) / MM
-                self.page_h_mm = (pix.height / 0.8) / MM
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                cw, ch = self.CANVAS_W, self.CANVAS_H
-                scale = min((cw - 20) / img.width, (ch - 20) / img.height)
-                new_size = (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
-                img = img.resize(new_size); self.img_ref = ImageTk.PhotoImage(img)
-                x, y = (cw - new_size[0]) / 2, (ch - new_size[1]) / 2
-                self.canvas.create_image(x, y, anchor="nw", image=self.img_ref)
-                self.page_label.configure(text=f"Page {self.page_index + 1} of {len(doc)}")
-            if self.overlay_callback: self.overlay_callback(self, x, y, new_size[0], new_size[1])
-            return x, y, new_size[0], new_size[1]
-        except Exception:
-            px, py, pw, ph = self.blank_page()
-            if self.overlay_callback: self.overlay_callback(self, px, py, pw, ph)
-            return px, py, pw, ph
-
-    def _overlay_box(self, px, py, pw, ph, item_w, item_h, pos, mx, my, cx, cy):
-        sx, sy = pw / self.page_w_mm, ph / self.page_h_mm
-        x0, y0 = place_box(pw, ph, item_w, item_h, pos, mx * sx, my * sy, cx * sx, cy * sy)
-        return px + x0, py + y0
-
-    def overlay_text(self, text, pos, mx, my, cx, cy, size, colour, underline=False, font_spec=None):
-        px, py, pw, ph = self.render() or self.blank_page()
-        fs = max(6, int(size * 0.85))
-        spec = font_spec or ("Segoe UI", fs)
-        try:
-            tw = tkfont.Font(font=spec).measure(text)
-        except Exception:
-            tw = len(text) * fs * 0.55
-        x, y = self._overlay_box(px, py, pw, ph, tw, fs, pos, mx, my, cx, cy)
-        self.canvas.create_text(x, y, text=text, anchor="nw", fill=colour, font=spec)
-        if underline:
-            self.canvas.create_line(x, y + fs + 1, x + tw, y + fs + 1, fill=colour)
-
-    def overlay_image(self, image_path, pos, width_mm, mx, my, cx, cy):
-        px, py, pw, ph = self.render() or self.blank_page()
-        if not image_path or not Path(image_path).exists(): return
-        try:
-            img = Image.open(image_path).convert("RGBA")
-        except Exception:
-            return
-        iw, ih = img.size
-        sw = pw * width_mm / self.page_w_mm; sh = sw * ih / iw
-        img = img.resize((max(1, int(sw)), max(1, int(sh))))
-        self.img_ref_overlay = ImageTk.PhotoImage(img)
-        x, y = self._overlay_box(px, py, pw, ph, sw, sh, pos, mx, my, cx, cy)
-        self.canvas.create_image(x, y, anchor="nw", image=self.img_ref_overlay)
-
-    def overlay_diagonal(self, text, size, colour, angle=45, font_spec=None):
-        px, py, pw, ph = self.render() or self.blank_page()
-        fs = max(8, int(size * 0.9))
-        spec = font_spec or ("Segoe UI", fs, "bold")
-        try:
-            self.canvas.create_text(px + pw / 2, py + ph / 2, text=text, fill=colour, font=spec, angle=angle)
-        except Exception:
-            self.canvas.create_text(px + pw / 2, py + ph / 2, text=text, fill=colour, font=spec)
-
-
-class ScrollableFrame(ttk.Frame):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.canvas = tk.Canvas(self, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.inner = ttk.Frame(self.canvas)
-        self.window_id = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
-        self.inner.bind("<Configure>", lambda event: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-        self.canvas.bind("<Configure>", lambda event: self.canvas.itemconfigure(self.window_id, width=event.width))
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-        # Activate wheel scrolling whenever the pointer is anywhere over this
-        # panel (including over child fields), and release it on the way out.
-        self.canvas.bind("<Enter>", self._activate)
-        self.canvas.bind("<Leave>", self._maybe_deactivate)
-
-    def _activate(self, _):
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _maybe_deactivate(self, _):
-        # Moving onto a child fires <Leave> on the canvas; keep scrolling active
-        # while the pointer is still inside the canvas's screen rectangle.
-        try:
-            x, y = self.canvas.winfo_pointerxy()
-            cx, cy = self.canvas.winfo_rootx(), self.canvas.winfo_rooty()
-            cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
-            if cx <= x < cx + cw and cy <= y < cy + ch:
-                return
-        except Exception:
-            pass
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event):
-        # Let lists/trees/text boxes scroll themselves; otherwise scroll the panel.
-        if isinstance(event.widget, (tk.Listbox, ttk.Treeview, tk.Text)):
-            return
-        try:
-            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        except Exception:
-            pass
 
 
 class PDFPartner:
@@ -869,7 +96,6 @@ class PDFPartner:
         self.set_icon_if_available()
         self.home()
 
-    # ---- small infrastructure -------------------------------------------------
     def configure_styles(self):
         style = ttk.Style(self.root)
         try:
@@ -882,7 +108,7 @@ class PDFPartner:
         except Exception:
             pass
         style.configure("App.TFrame", background=THEME["bg"])
-        style.configure("Header.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 24, "bold"))
+        style.configure("Header.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 22, "bold"))
         style.configure("Subheader.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 10))
         style.configure("Section.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 15, "bold"))
         style.configure("Muted.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 9))
@@ -997,7 +223,6 @@ class PDFPartner:
             pass
 
     def enable_listbox_drag(self, lb, length_fn, swap_fn, refresh_fn):
-        """Make a Listbox reorder by dragging an item with the mouse."""
         state = {"i": None}
         def start(e):
             state["i"] = lb.nearest(e.y)
@@ -1010,7 +235,6 @@ class PDFPartner:
         lb.bind("<Button-1>", start, add="+")
         lb.bind("<B1-Motion>", motion, add="+")
 
-    # ---- generic rows / groups -----------------------------------------------
     def group(self, parent, title):
         g = ttk.LabelFrame(parent, text=title, padding=8)
         g.pack(fill="x", pady=6)
@@ -1141,7 +365,6 @@ class PDFPartner:
         mode.trace_add("write", sync); sync()
         return mode, folder, suffix, exists
 
-    # ---- result / batch helpers ----------------------------------------------
     def finish(self, done, errors):
         if errors:
             for e in errors:
@@ -1155,8 +378,6 @@ class PDFPartner:
             messagebox.showinfo("Done", f"Successfully processed {done} PDF(s).")
 
     def run_files(self, pdfs, mutate, out_mode, out_folder, suffix, if_exists, title="Processing"):
-        """Shared per-file batch loop with a progress dialog. `mutate(doc, pdf)`
-        modifies an open document in place; this handles open/save/errors/UI."""
         if not pdfs:
             messagebox.showerror("Error", "Select PDF(s)."); return
         errors, done, total = [], 0, len(pdfs)
@@ -1172,10 +393,11 @@ class PDFPartner:
             win.geometry(f"+{self.root.winfo_rootx() + 90}+{self.root.winfo_rooty() + 110}")
         except Exception:
             pass
-        try:
+
+        def worker():
+            nonlocal done
             for i, pdf in enumerate(pdfs, 1):
-                status.configure(text=f"{i} / {total}   {Path(pdf).name}")
-                bar["value"] = i - 1; win.update_idletasks()
+                self.root.after(0, lambda idx=i, p=pdf: (status.configure(text=f"{idx} / {total}   {Path(p).name}"), bar.configure(value=idx - 1)))
                 try:
                     with fitz.open(pdf) as doc:
                         mutate(doc, pdf)
@@ -1184,12 +406,11 @@ class PDFPartner:
                     done += 1
                 except Exception as e:
                     errors.append(f"{pdf}\n{e}\n{traceback.format_exc()}")
-                bar["value"] = i; win.update_idletasks()
-        finally:
-            win.destroy()
-        self.finish(done, errors)
+                self.root.after(0, lambda idx=i: bar.configure(value=idx))
+            self.root.after(0, lambda: (win.destroy(), self.finish(done, errors)))
 
-    # ---- home -----------------------------------------------------------------
+        threading.Thread(target=worker, daemon=True).start()
+
     def home(self):
         self.active_tool = "Dashboard"
         self.clear()
@@ -1212,7 +433,7 @@ class PDFPartner:
         dashboard.pack(fill="both", expand=True)
         grid = dashboard.inner
         self.dashboard_stats(grid)
-        self.dashboard_section(grid, "Core PDF Tools", [("Merge", "Combine PDFs in order and create bookmarks from file names.", self.merge_module), ("Split", "Split PDFs by bookmarks, fixed page count, or custom ranges.", self.split_module), ("Delete", "Delete selected pages or page ranges safely.", self.delete_module), ("Rotate", "Rotate selected, odd, even, first, last, or all pages.", self.rotate_module)])
+        self.dashboard_section(grid, "Core PDF Tools", [("Merge PDFs", "Combine PDFs in order and create bookmarks from file names.", self.merge_module), ("Split PDF", "Split PDFs by bookmarks, fixed page count, or custom ranges.", self.split_module), ("Delete Pages", "Delete selected pages or page ranges safely.", self.delete_module), ("Rotate Pages", "Rotate selected, odd, even, first, last, or all pages.", self.rotate_module)])
         self.dashboard_section(grid, "Watermarking & Stamping", [("Text Watermark", "Add file names, headings, DRAFT, CONFIDENTIAL, or custom text.", self.text_module), ("Page Numbering", "Apply professional page numbers with formatting and placement controls.", self.number_module), ("Sign / Stamp", "Apply signature, seal, or stamp images with live preview.", self.sign_module)])
         self.dashboard_section(grid, "Litigation Tools", [("Index Builder", "Build an editable index from bookmarks or selected files.", self.index_module), ("Bookmark Editor", "View, add, edit, delete, and validate PDF bookmarks.", self.bookmark_module), ("PDF Organiser", "Arrange PDFs, edit display names, and rename files on disk.", self.pdf_organiser)])
         self.dashboard_section(grid, "Document Properties", [("Metadata Editor", "Read, edit, clear, and batch-apply PDF metadata.", self.metadata_module)])
@@ -1254,27 +475,89 @@ class PDFPartner:
         return card
 
     def header(self, title, subtitle=""):
-        active_map = {
-            "PDF Organiser": "PDF Organiser",
-            "Text Watermark / Heading": "Text Watermark",
-            "Page Numbering": "Page Numbering",
-            "Sign / Stamp": "Sign / Stamp",
-            "Merge PDFs": "Merge PDFs",
-            "Index Builder": "Index Builder",
-            "Split PDF": "Split PDF",
-            "Delete Pages": "Delete Pages",
-            "Rotate Pages": "Rotate Pages",
-            "Bookmark Editor": "Bookmark Editor",
-            "Metadata Editor": "Metadata Editor",
-        }
-        self.active_tool = active_map.get(title, title)
+        category, default_desc = MODULE_CATEGORIES.get(title, ("Module", ""))
+        sub_text = subtitle or default_desc
+        self.active_tool = title
         self.clear()
-        top = ttk.Frame(self.main_area, style="App.TFrame")
-        top.pack(fill="x", pady=(0, 12))
-        ttk.Label(top, text=title, style="Header.TLabel").pack(side="left")
-        ttk.Button(top, text="Dashboard", command=self.home).pack(side="right")
-        if subtitle:
-            ttk.Label(self.main_area, text=subtitle, style="Subheader.TLabel").pack(anchor="w", pady=(0, 12))
+
+        # Banner Card Container
+        banner = tk.Frame(
+            self.main_area,
+            bg=THEME["surface"],
+            highlightbackground=THEME["border"],
+            highlightthickness=1,
+            bd=0,
+            padx=18,
+            pady=14
+        )
+        banner.pack(fill="x", pady=(0, 14))
+
+        # Top Bar inside Banner: Navigation Breadcrumbs & Back Button
+        top_bar = tk.Frame(banner, bg=THEME["surface"])
+        top_bar.pack(fill="x")
+
+        back_btn = tk.Button(
+            top_bar,
+            text="← Back to Dashboard",
+            command=self.home,
+            bg="#EFF6FF",
+            fg=THEME["primary"],
+            activebackground="#DBEAFE",
+            activeforeground=THEME["primary_dark"],
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=4,
+            font=("Segoe UI", 9, "bold"),
+            cursor="hand2"
+        )
+        back_btn.pack(side="left")
+
+        # Breadcrumbs
+        crumb_str = f"Dashboard  /  {category}  /  {title}"
+        tk.Label(
+            top_bar,
+            text=crumb_str,
+            bg=THEME["surface"],
+            fg=THEME["muted"],
+            font=("Segoe UI", 9)
+        ).pack(side="left", padx=14)
+
+        # Category Badge
+        badge = tk.Label(
+            top_bar,
+            text=category.upper(),
+            bg="#F1F5F9",
+            fg="#475569",
+            font=("Segoe UI", 8, "bold"),
+            padx=8,
+            pady=2
+        )
+        badge.pack(side="right")
+
+        # Title & Subtitle inside Banner
+        title_frame = tk.Frame(banner, bg=THEME["surface"])
+        title_frame.pack(fill="x", pady=(10, 0))
+
+        tk.Label(
+            title_frame,
+            text=title,
+            bg=THEME["surface"],
+            fg=THEME["text"],
+            font=("Segoe UI", 18, "bold"),
+            anchor="w"
+        ).pack(anchor="w")
+
+        if sub_text:
+            tk.Label(
+                title_frame,
+                text=sub_text,
+                bg=THEME["surface"],
+                fg=THEME["muted"],
+                font=("Segoe UI", 9.5),
+                anchor="w"
+            ).pack(anchor="w", pady=(2, 0))
+
         return self.main_area
 
     def scroll_body(self, parent):
@@ -1282,7 +565,6 @@ class PDFPartner:
         scroll.pack(fill="both", expand=True)
         return scroll.inner
 
-    # ---- settings -------------------------------------------------------------
     def open_settings(self):
         win = tk.Toplevel(self.root); win.title("Settings"); win.transient(self.root); win.resizable(False, False)
         try: win.iconbitmap(str(app_base_dir() / "icon.ico"))
@@ -1309,7 +591,6 @@ class PDFPartner:
         ttk.Button(btns, text="Open App Fonts folder", command=lambda: open_folder(app_fonts_dir())).pack(side="left", padx=6)
         ttk.Button(btns, text="Save & Close", command=lambda: (persist(), scan_external_fonts.cache_clear(), self.refresh_font_values(), win.destroy())).pack(side="right")
 
-    # ---- PDF Organiser --------------------------------------------------------
     def pdf_organiser(self):
         f = self.header("PDF Organiser", "Arrange PDFs, edit display names, and optionally rename files on disk.")
         body = self.scroll_body(f)
@@ -1373,7 +654,6 @@ class PDFPartner:
             ttk.Button(row, text=text, command=cmd).pack(side="left", padx=3)
         refresh()
 
-    # ---- Text / Page numbering (shared) --------------------------------------
     def text_module(self):
         self._text_overlay("heading")
 
@@ -1400,7 +680,6 @@ class PDFPartner:
         sched = self.debounced(preview, lambda: refresh_preview())
         pdfs = []
 
-        # Source -------------------------------------------------------------
         src_grp = self.group(left, "Source")
         self.pdf_list_selector(src_grp, pdfs, on_change=lambda: (update_apply(), sched()))
         if is_num:
@@ -1417,7 +696,6 @@ class PDFPartner:
             def sync_src(*_): self._show_row(custom_row._row, src.get().startswith("Custom"))
             src.trace_add("write", sync_src); sync_src()
 
-        # Placement ----------------------------------------------------------
         place_grp = self.group(left, "Placement")
         self.row_combo(place_grp, "Position", pos, POSITIONS)
         self.row_entry(place_grp, "Pages", pages)
@@ -1436,7 +714,6 @@ class PDFPartner:
         ttk.Label(diag_row, text="", width=30).pack(side="left")
         ttk.Checkbutton(diag_row, text="Diagonal watermark (centered, 45° - ignores position/margins)", variable=diagonal).pack(side="left")
 
-        # Style + Output -----------------------------------------------------
         self.style_group(left, font, size, bold, underline, hexc, opacity)
         out_mode, out_folder, suffix, if_exists = self.output_group(left, MODULE_OUTPUT_SUFFIXES["page_numbering"] if is_num else MODULE_OUTPUT_SUFFIXES["text_heading"])
 
@@ -1487,7 +764,6 @@ class PDFPartner:
                         insert_text(page, text, pt, sz, fontname, fontfile, col, opa, ul, fake)
             self.run_files(pdfs, mutate, out_mode.get(), out_folder.get(), suffix.get(), if_exists.get(), title)
 
-        # Action + live wiring ----------------------------------------------
         action = ttk.Frame(left); action.pack(fill="x", pady=10)
         apply_btn = ttk.Button(action, text="Add Page Numbers" if is_num else "Apply Text", command=run)
         apply_btn.pack(side="right")
@@ -1498,7 +774,6 @@ class PDFPartner:
             v.trace_add("write", sched)
         refresh_preview()
 
-    # ---- Sign / Stamp ---------------------------------------------------------
     def sign_module(self):
         f = self.header("Sign / Stamp", "Apply one signature/seal image - the preview updates as you type.")
         main = ttk.Frame(f); main.pack(fill="both", expand=True)
@@ -1566,7 +841,6 @@ class PDFPartner:
         img.trace_add("write", lambda *a: update_apply())
         refresh_preview()
 
-    # ---- Merge ----------------------------------------------------------------
     def merge_module(self):
         f = self.header("Merge PDFs", "Combine PDFs in order; optionally bookmark each by file name.")
         body = self.scroll_body(f)
@@ -1585,20 +859,22 @@ class PDFPartner:
         self.row_file(body, "Output PDF", out, lambda: out.set(filedialog.asksaveasfilename(parent=self.root, defaultextension=".pdf", initialdir=str(documents_dir()), filetypes=[("PDF", "*.pdf")]) or out.get()))
         def run():
             if not pdfs or not out.get(): messagebox.showerror("Error", "Select PDFs and an output file."); return
-            try:
-                with fitz.open() as doc:
-                    toc = []
-                    for pdf in pdfs:
-                        with fitz.open(pdf) as src: start = len(doc); doc.insert_pdf(src)
-                        if bookmarks.get(): toc.append([1, clean_title(pdf), start + 1])
-                    if toc: doc.set_toc(toc)
-                    doc.save(out.get(), garbage=4, deflate=True)
-                messagebox.showinfo("Done", f"Merged PDF created:\n{out.get()}")
-            except Exception as e:
-                logger.error("Merge failed: %s\n%s", e, traceback.format_exc()); messagebox.showerror("Error", str(e))
+            def task():
+                try:
+                    with fitz.open() as doc:
+                        toc = []
+                        for pdf in pdfs:
+                            with fitz.open(pdf) as src: start = len(doc); doc.insert_pdf(src)
+                            if bookmarks.get(): toc.append([1, clean_title(pdf), start + 1])
+                        if toc: doc.set_toc(toc)
+                        doc.save(out.get(), garbage=4, deflate=True)
+                    self.root.after(0, lambda: messagebox.showinfo("Done", f"Merged PDF created:\n{out.get()}"))
+                except Exception as e:
+                    logger.error("Merge failed: %s\n%s", e, traceback.format_exc())
+                    self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+            threading.Thread(target=task, daemon=True).start()
         ttk.Button(body, text="Merge PDFs", command=run).pack(anchor="e", pady=12)
 
-    # ---- Index Builder --------------------------------------------------------
     def index_module(self):
         f = self.header("Index Builder", "Build an editable index from bookmarks (single file) or file names (multiple files), then save it as a PDF page.")
         main = ttk.Frame(f); main.pack(fill="both", expand=True)
@@ -1650,9 +926,9 @@ class PDFPartner:
             rowid = tree.identify_row(event.y); col = tree.identify_column(event.x)
             if not rowid or not col:
                 return
-            ci = int(col[1:]) - 1            # 0=Sr, 1=Particulars, 2=From, 3=To
+            ci = int(col[1:]) - 1
             if ci == 0:
-                return                       # Sr is auto-numbered, not editable
+                return
             try:
                 bx, by, bw, bh = tree.bbox(rowid, col)
             except Exception:
@@ -1737,7 +1013,6 @@ class PDFPartner:
         ttk.Button(out_row, text="Save Index PDF", command=save_pdf).pack(side="left", padx=6)
         ttk.Button(out_row, text="Prepend to PDF…", command=prepend_pdf).pack(side="right")
 
-    # ---- Split ----------------------------------------------------------------
     def split_module(self):
         f = self.header("Split PDF", "Split by bookmarks, a fixed page count, or custom ranges.")
         body = self.scroll_body(f)
@@ -1759,30 +1034,34 @@ class PDFPartner:
                 d.save(str(Path(folder.get()) / (make_name(n, i) + ".pdf")), garbage=4, deflate=True)
         def run():
             if not pdf.get() or not folder.get(): messagebox.showerror("Error", "Select a PDF and an output folder."); return
-            try:
-                with fitz.open(pdf.get()) as src:
-                    total = len(src); count = 0
-                    if mode.get() == "Top-level bookmarks":
-                        top = [(t, p) for lvl, t, p, *_ in src.get_toc() if lvl == 1]
-                        if not top: messagebox.showerror("No bookmarks", "No top-level bookmarks found."); return
-                        for idx, (t, p) in enumerate(top, 1): save_part(src, p - 1, (top[idx][1] - 1 if idx < len(top) else total), t, idx); count += 1
-                    elif mode.get() == "Fixed page count":
-                        step = max(1, safe_int(fixed.get(), 10)); idx = 1
-                        for a in range(0, total, step): b = min(total, a + step); save_part(src, a, b, f"Pages {a+1}-{b}", idx); idx += 1; count += 1
-                    else:
-                        idx = 1
-                        for part in ranges.get().split(','):
-                            part = part.strip()
-                            if not part: continue
-                            if '-' in part: a, b = part.split('-', 1); a, b = max(1, safe_int(a, 1)), min(total, safe_int(b, total))
-                            else: a = b = safe_int(part, 1)
-                            if 1 <= a <= b <= total: save_part(src, a - 1, b, f"Pages {a}-{b}", idx); idx += 1; count += 1
-                messagebox.showinfo("Done", f"Created {count} split PDF(s).")
-            except Exception as e:
-                logger.error("Split failed: %s\n%s", e, traceback.format_exc()); messagebox.showerror("Error", str(e))
+            def task():
+                try:
+                    with fitz.open(pdf.get()) as src:
+                        total = len(src); count = 0
+                        if mode.get() == "Top-level bookmarks":
+                            top = [(t, p) for lvl, t, p, *_ in src.get_toc() if lvl == 1]
+                            if not top:
+                                self.root.after(0, lambda: messagebox.showerror("No bookmarks", "No top-level bookmarks found."))
+                                return
+                            for idx, (t, p) in enumerate(top, 1): save_part(src, p - 1, (top[idx][1] - 1 if idx < len(top) else total), t, idx); count += 1
+                        elif mode.get() == "Fixed page count":
+                            step = max(1, safe_int(fixed.get(), 10)); idx = 1
+                            for a in range(0, total, step): b = min(total, a + step); save_part(src, a, b, f"Pages {a+1}-{b}", idx); idx += 1; count += 1
+                        else:
+                            idx = 1
+                            for part in ranges.get().split(','):
+                                part = part.strip()
+                                if not part: continue
+                                if '-' in part: a, b = part.split('-', 1); a, b = max(1, safe_int(a, 1)), min(total, safe_int(b, total))
+                                else: a = b = safe_int(part, 1)
+                                if 1 <= a <= b <= total: save_part(src, a - 1, b, f"Pages {a}-{b}", idx); idx += 1; count += 1
+                    self.root.after(0, lambda: messagebox.showinfo("Done", f"Created {count} split PDF(s)."))
+                except Exception as e:
+                    logger.error("Split failed: %s\n%s", e, traceback.format_exc())
+                    self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+            threading.Thread(target=task, daemon=True).start()
         ttk.Button(body, text="Split PDF", command=run).pack(anchor="e", pady=12)
 
-    # ---- Delete ---------------------------------------------------------------
     def delete_module(self):
         f = self.header("Delete Pages", "Remove pages and save as a new PDF.")
         body = self.scroll_body(f)
@@ -1801,7 +1080,6 @@ class PDFPartner:
         def update_apply(): apply_btn.configure(state=("normal" if pdfs else "disabled"))
         update_apply()
 
-    # ---- Rotate (unified Pages field) ----------------------------------------
     def rotate_module(self):
         f = self.header("Rotate Pages", "Rotate selected pages. The Pages field accepts all / odd / even / first / last and ranges.")
         body = self.scroll_body(f)
@@ -1824,7 +1102,6 @@ class PDFPartner:
         def update_apply(): apply_btn.configure(state=("normal" if pdfs else "disabled"))
         update_apply()
 
-    # ---- Bookmark editor ------------------------------------------------------
     def bookmark_module(self):
         f = self.header("Bookmark Editor", "Hierarchy-aware editor using Level | Title | Page No.")
         body = self.scroll_body(f)
@@ -1886,7 +1163,6 @@ class PDFPartner:
         for t, c in [("Reload", load), ("Add", lambda: add_edit(False)), ("Edit", lambda: add_edit(True)), ("Delete", delete), ("Save PDF", save)]:
             ttk.Button(row, text=t, command=c).pack(side="left", padx=4)
 
-    # ---- Metadata -------------------------------------------------------------
     def metadata_module(self):
         f = self.header("Metadata Editor", "Read/edit metadata for one or more PDFs (loads automatically when you add the first file).")
         body = self.scroll_body(f)
@@ -1919,9 +1195,21 @@ class PDFPartner:
         ttk.Button(row, text="Apply Metadata", command=apply).pack(side="right")
 
 
+def choose_pdfs(parent, multiple=True, title="Select PDF file(s)"):
+    opts = dict(parent=parent, title=title, initialdir=str(documents_dir()), filetypes=[("PDF files", ("*.pdf", "*.PDF")), ("All files", "*.*")])
+    if multiple:
+        return [f for f in filedialog.askopenfilenames(**opts) if Path(f).suffix.lower() == ".pdf"]
+    f = filedialog.askopenfilename(**opts)
+    return f if f and Path(f).suffix.lower() == ".pdf" else ""
+
+
+def choose_image(parent):
+    f = filedialog.askopenfilename(parent=parent, title="Select image", initialdir=str(Path.home() / "Pictures"), filetypes=[("Images", ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG")), ("All files", "*.*")])
+    return f if f and Path(f).suffix.lower() in [".png", ".jpg", ".jpeg"] else ""
+
+
 def main():
     setup_logging()
-    # Crisp rendering on high-DPI Windows displays (no effect elsewhere).
     try:
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
