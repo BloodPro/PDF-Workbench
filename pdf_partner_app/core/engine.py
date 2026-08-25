@@ -1,6 +1,9 @@
 """Core PDF engine and manipulation functions."""
 
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 from pdf_partner_app.utils.config import MM, logger
 from pdf_partner_app.utils.helpers import clean_title
 

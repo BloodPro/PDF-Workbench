@@ -5,7 +5,10 @@ import tkinter.font as tkfont
 from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageTk
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 from pdf_partner_app.utils.config import A4_W_MM, A4_H_MM, MM, logger
 from pdf_partner_app.core.engine import place_box

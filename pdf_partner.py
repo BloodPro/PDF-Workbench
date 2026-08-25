@@ -31,7 +31,10 @@ import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 
 from PIL import Image, ImageTk
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 from pdf_partner_app.utils.config import (
     APP_NAME, APP_AUTHOR, APP_REPOSITORY, APP_DESCRIPTION, APP_VERSION,
@@ -554,7 +557,7 @@ class PDFPartner:
                 text=sub_text,
                 bg=THEME["surface"],
                 fg=THEME["muted"],
-                font=("Segoe UI", 9.5),
+                font=("Segoe UI", 10),
                 anchor="w"
             ).pack(anchor="w", pady=(2, 0))
 
