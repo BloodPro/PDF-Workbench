@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 for mod in [
     "tkinter", "tkinter.font", "tkinter.ttk", "tkinter.filedialog",
     "tkinter.messagebox", "tkinter.simpledialog", "tkinter.colorchooser",
-    "fitz", "PIL", "tkinterdnd2"
+    "fitz", "PIL", "tkinterdnd2", "pyhanko", "pyhanko.pdf_utils.incremental_writer",
+    "pyhanko.sign", "pyhanko.sign.fields", "pyhanko.sign.signers", "pyhanko.sign.pkcs11"
 ]:
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
@@ -26,6 +27,11 @@ from pdf_partner_app.core.engine import (
     index_rows_from_files,
     place_box,
     text_width,
+)
+from pdf_partner_app.core.crypto_sign import (
+    detect_usb_token_drivers,
+    sign_pdf_with_pfx,
+    sign_pdf_with_pkcs11,
 )
 
 def test_parse_pages():
@@ -92,3 +98,7 @@ def test_place_box_positions():
     assert place_box(w, h, iw, ih, "Top Left", 5, 5, 0, 0) == (5, 5)
     assert place_box(w, h, iw, ih, "Center", 5, 5, 0, 0) == (40, 95)
     assert place_box(w, h, iw, ih, "Bottom Right", 5, 5, 0, 0) == (75, 185)
+
+def test_detect_usb_token_drivers():
+    drivers = detect_usb_token_drivers()
+    assert isinstance(drivers, list)

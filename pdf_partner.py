@@ -53,6 +53,10 @@ from pdf_partner_app.core.engine import (
     text_width, text_point, image_rect, insert_text, insert_diagonal_text,
     index_rows_from_pdf, index_rows_from_files, render_index_pdf
 )
+from pdf_partner_app.core.crypto_sign import (
+    sign_pdf_with_pfx, sign_pdf_with_pkcs11, detect_usb_token_drivers,
+    PYHANKO_AVAILABLE
+)
 from pdf_partner_app.ui.widgets import Collapsible, PDFPreview, ScrollableFrame
 
 
@@ -167,7 +171,7 @@ class PDFPartner:
         self.sidebar_button("Dashboard", self.home)
         groups = [
             ("CORE PDF TOOLS", [("Merge PDFs", self.merge_module), ("Split PDF", self.split_module), ("Delete Pages", self.delete_module), ("Rotate Pages", self.rotate_module)]),
-            ("WATERMARKING", [("Text Watermark", self.text_module), ("Page Numbering", self.number_module), ("Sign / Stamp", self.sign_module)]),
+            ("WATERMARKING", [("Text Watermark", self.text_module), ("Page Numbering", self.number_module), ("Sign / Stamp", self.sign_module), ("Digital Signature (DSC)", self.digital_sig_module)]),
             ("LITIGATION TOOLS", [("Index Builder", self.index_module), ("Bookmark Editor", self.bookmark_module), ("PDF Organiser", self.pdf_organiser)]),
             ("APPLICATION", [("Metadata Editor", self.metadata_module), ("Settings", self.open_settings), ("GitHub Repository", self.open_repository)]),
         ]
@@ -448,7 +452,7 @@ class PDFPartner:
         grid = dashboard.inner
         self.dashboard_stats(grid)
         self.dashboard_section(grid, "Core PDF Tools", [("Merge PDFs", "Combine PDFs in order and create bookmarks from file names.", self.merge_module), ("Split PDF", "Split PDFs by bookmarks, fixed page count, or custom ranges.", self.split_module), ("Delete Pages", "Delete selected pages or page ranges safely.", self.delete_module), ("Rotate Pages", "Rotate selected, odd, even, first, last, or all pages.", self.rotate_module)])
-        self.dashboard_section(grid, "Watermarking & Stamping", [("Text Watermark", "Add file names, headings, DRAFT, CONFIDENTIAL, or custom text.", self.text_module), ("Page Numbering", "Apply professional page numbers with formatting and placement controls.", self.number_module), ("Sign / Stamp", "Apply signature, seal, or stamp images with live preview.", self.sign_module)])
+        self.dashboard_section(grid, "Watermarking & Stamping", [("Text Watermark", "Add file names, headings, DRAFT, CONFIDENTIAL, or custom text.", self.text_module), ("Page Numbering", "Apply professional page numbers with formatting and placement controls.", self.number_module), ("Sign / Stamp", "Apply signature, seal, or stamp images with live preview.", self.sign_module), ("Digital Signature (DSC)", "Apply cryptographic digital signatures using PFX or USB Token.", self.digital_sig_module)])
         self.dashboard_section(grid, "Litigation Tools", [("Index Builder", "Build an editable index from bookmarks or selected files.", self.index_module), ("Bookmark Editor", "View, add, edit, delete, and validate PDF bookmarks.", self.bookmark_module), ("PDF Organiser", "Arrange PDFs, edit display names, and rename files on disk.", self.pdf_organiser)])
         self.dashboard_section(grid, "Document Properties", [("Metadata Editor", "Read, edit, clear, and batch-apply PDF metadata.", self.metadata_module)])
 
@@ -1176,6 +1180,121 @@ class PDFPartner:
         row = ttk.Frame(body); row.pack(fill="x", pady=5)
         for t, c in [("Reload", load), ("Add", lambda: add_edit(False)), ("Edit", lambda: add_edit(True)), ("Delete", delete), ("Save PDF", save)]:
             ttk.Button(row, text=t, command=c).pack(side="left", padx=4)
+
+    def digital_sig_module(self):
+        f = self.header("Digital Signature (DSC)", "Apply legal cryptographic digital signatures using PFX certificate file (Solution 1) or USB Hardware Token (Solution 2).")
+        body = self.scroll_body(f)
+        pdfs = []
+
+        sig_mode = tk.StringVar(value="PFX / P12 Certificate File (Solution 1)")
+        pfx_path = tk.StringVar(value=self.settings.get("last_pfx_path", ""))
+        pfx_pass = tk.StringVar()
+        token_dll = tk.StringVar()
+        token_pin = tk.StringVar()
+        reason = tk.StringVar(value="Digital Legal Signature")
+        location = tk.StringVar(value="Court / Tribunal")
+
+        src_grp = self.group(body, "Source PDFs")
+        self.pdf_list_selector(src_grp, pdfs)
+
+        mode_grp = self.group(body, "Signature Method")
+        self.row_combo(
+            mode_grp,
+            "Method",
+            sig_mode,
+            ["PFX / P12 Certificate File (Solution 1)", "USB Hardware Token (Solution 2 - PKCS#11)"]
+        )
+
+        pfx_grp = self.group(body, "Solution 1: PFX / P12 Certificate Details")
+        self.row_file(
+            pfx_grp,
+            "PFX/P12 File",
+            pfx_path,
+            lambda: (
+                pfx_path.set(
+                    filedialog.askopenfilename(
+                        parent=self.root,
+                        title="Select PFX/P12 Certificate",
+                        filetypes=[("PKCS#12 Certificates", "*.pfx *.p12"), ("All files", "*.*")]
+                    ) or pfx_path.get()
+                ),
+                self.settings.update({"last_pfx_path": pfx_path.get()}),
+                save_settings(self.settings)
+            )
+        )
+        self.row_entry(pfx_grp, "Certificate Password", pfx_pass)
+
+        token_grp = self.group(body, "Solution 2: Hardware USB Token Details")
+        detected_drivers = detect_usb_token_drivers()
+        if detected_drivers:
+            token_dll.set(detected_drivers[0])
+        self.row_combo(token_grp, "Token PKCS#11 DLL", token_dll, detected_drivers or ["C:\\Windows\\System32\\eps2003csp11.dll"])
+        ttk.Button(
+            token_grp,
+            text="Browse Custom DLL…",
+            command=lambda: token_dll.set(
+                filedialog.askopenfilename(
+                    parent=self.root,
+                    title="Select PKCS#11 Driver DLL",
+                    filetypes=[("DLL files", "*.dll"), ("All files", "*.*")]
+                ) or token_dll.get()
+            )
+        ).pack(anchor="w", padx=4, pady=2)
+        self.row_entry(token_grp, "Token PIN", token_pin)
+
+        meta_grp = self.group(body, "Signature Metadata")
+        self.row_entry(meta_grp, "Reason", reason)
+        self.row_entry(meta_grp, "Location", location)
+
+        out_mode, out_folder, suffix, if_exists = self.output_group(body, MODULE_OUTPUT_SUFFIXES["digital_sig"])
+
+        def sync_mode(*_):
+            is_pfx = sig_mode.get().startswith("PFX")
+            self._show_row(pfx_grp, is_pfx)
+            self._show_row(token_grp, not is_pfx)
+
+        sig_mode.trace_add("write", sync_mode)
+        sync_mode()
+
+        def run():
+            if not pdfs:
+                messagebox.showerror("Error", "Select PDF file(s) to sign."); return
+            if not PYHANKO_AVAILABLE:
+                messagebox.showerror("Missing Dependency", "pyHanko library is required for digital signatures.\nInstall via: pip install pyhanko cryptography"); return
+
+            mode = sig_mode.get()
+            is_pfx = mode.startswith("PFX")
+
+            if is_pfx and not pfx_path.get():
+                messagebox.showerror("Error", "Select a PFX/P12 Certificate file."); return
+            if not is_pfx and not token_dll.get():
+                messagebox.showerror("Error", "Select a PKCS#11 driver DLL for the USB Token."); return
+
+            def task():
+                errors, done = [], 0
+                for pdf in pdfs:
+                    try:
+                        out = resolve_output_path(pdf, suffix.get(), out_mode.get(), out_folder.get(), if_exists.get())
+                        if is_pfx:
+                            sign_pdf_with_pfx(
+                                pdf, str(out), pfx_path.get(), pfx_pass.get(),
+                                reason=reason.get(), location=location.get()
+                            )
+                        else:
+                            sign_pdf_with_pkcs11(
+                                pdf, str(out), token_dll.get(), token_pin.get(),
+                                reason=reason.get(), location=location.get()
+                            )
+                        done += 1
+                    except Exception as exc:
+                        errors.append(f"{pdf}\n{exc}\n{traceback.format_exc()}")
+
+                self.root.after(0, lambda: self.finish(done, errors))
+
+            threading.Thread(target=task, daemon=True).start()
+
+        action = ttk.Frame(body); action.pack(fill="x", pady=12)
+        ttk.Button(action, text="Digitally Sign Document(s)", command=run, style="Accent.TButton").pack(side="right")
 
     def metadata_module(self):
         f = self.header("Metadata Editor", "Read/edit metadata for one or more PDFs (loads automatically when you add the first file).")
