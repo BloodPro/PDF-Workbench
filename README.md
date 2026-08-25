@@ -443,13 +443,7 @@ pip install fonttools
 
 ## Running From Source
 
-To run the updated Phase 1 UI version:
-
-```bash
-python pdf_partner_phase1.py
-```
-
-To run the original source version:
+To run the application:
 
 ```bash
 python pdf_partner.py
@@ -476,13 +470,13 @@ This executable is generated from the Python source code using PyInstaller.
 ### Build Without Icon
 
 ```bash
-python -m PyInstaller --onefile --windowed --name PDF_Partner --version-file version_info.txt pdf_partner_phase1.py
+python -m PyInstaller --onefile --windowed --name PDF_Partner --version-file version_info.txt pdf_partner.py
 ```
 
 ### Build With Icon
 
 ```bash
-python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico --version-file version_info.txt pdf_partner_phase1.py
+python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico --version-file version_info.txt pdf_partner.py
 ```
 
 ### Build With Drag-And-Drop Support
@@ -490,7 +484,7 @@ python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico --
 If `tkinterdnd2` is installed and drag-and-drop support is required in the executable:
 
 ```bash
-python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico --version-file version_info.txt --collect-all tkinterdnd2 pdf_partner_phase1.py
+python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico --version-file version_info.txt --collect-all tkinterdnd2 pdf_partner.py
 ```
 
 ---

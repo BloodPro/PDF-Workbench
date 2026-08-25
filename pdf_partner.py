@@ -137,8 +137,9 @@ def setup_logging():
             handler = RotatingFileHandler(LOG_FILE, maxBytes=512 * 1024, backupCount=2, encoding="utf-8")
             handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)s  %(message)s"))
             logger.addHandler(handler)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.basicConfig(level=logging.INFO)
+        logger.warning("Failed to initialize file logger: %s", exc)
 
 
 def app_base_dir():
@@ -149,8 +150,8 @@ def app_fonts_dir():
     p = app_base_dir() / "Fonts"
     try:
         p.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Unable to create app fonts directory: %s", exc)
     return p
 
 
@@ -171,15 +172,16 @@ def documents_dir():
 def load_settings():
     try:
         return json.loads(SETTINGS_FILE.read_text(encoding="utf-8")) if SETTINGS_FILE.exists() else {}
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to load settings from %s: %s", SETTINGS_FILE, exc)
         return {}
 
 
 def save_settings(settings):
     try:
         SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to save settings to %s: %s", SETTINGS_FILE, exc)
 
 
 def open_folder(path):
@@ -717,7 +719,8 @@ class PDFPreview(ttk.LabelFrame):
                 with fitz.open(self.pdf_path) as doc: total = len(doc)
                 if self.page_index < total - 1:
                     self.page_index += 1; self.render()
-            except Exception: pass
+            except Exception as exc:
+                logger.debug("Failed to navigate to next page: %s", exc)
 
     def blank_page(self):
         self.canvas.delete("all")
@@ -944,8 +947,10 @@ class PDFPartner:
     def set_icon_if_available(self):
         icon_path = app_base_dir() / "icon.ico"
         if icon_path.exists():
-            try: self.root.iconbitmap(str(icon_path))
-            except Exception: pass
+            try:
+                self.root.iconbitmap(str(icon_path))
+            except Exception as exc:
+                logger.debug("Unable to set window icon: %s", exc)
 
     def refresh_font_values(self):
         self.font_values = all_font_options(self.include_app_fonts.get(), self.include_windows_fonts.get(), self.include_user_fonts.get())
@@ -1920,14 +1925,14 @@ def main():
     try:
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("DPI awareness setting unavailable: %s", exc)
     root = TkinterDnD.Tk() if DND_AVAILABLE else tk.Tk()
     try:
         style = ttk.Style(root)
         if "vista" in style.theme_names(): style.theme_use("vista")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Vista theme unavailable: %s", exc)
     PDFPartner(root)
     root.mainloop()
 
