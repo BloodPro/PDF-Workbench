@@ -102,7 +102,9 @@ class PDFPartner:
     def configure_styles(self):
         style = ttk.Style(self.root)
         try:
-            if "vista" in style.theme_names():
+            if "clam" in style.theme_names():
+                style.theme_use("clam")
+            elif "vista" in style.theme_names():
                 style.theme_use("vista")
         except Exception:
             pass
@@ -110,11 +112,20 @@ class PDFPartner:
             self.root.configure(bg=THEME["bg"])
         except Exception:
             pass
+        style.configure(".", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 9))
+        style.configure("TFrame", background=THEME["bg"])
         style.configure("App.TFrame", background=THEME["bg"])
+        style.configure("TLabelframe", background=THEME["bg"], bordercolor=THEME["border"], relief="solid", borderwidth=1)
+        style.configure("TLabelframe.Label", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 10, "bold"))
+        style.configure("TLabel", background=THEME["bg"], foreground=THEME["text"])
+        style.configure("TCheckbutton", background=THEME["bg"], foreground=THEME["text"])
         style.configure("Header.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 22, "bold"))
         style.configure("Subheader.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 10))
         style.configure("Section.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 15, "bold"))
         style.configure("Muted.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 9))
+        style.configure("TButton", font=("Segoe UI", 9), padding=(8, 4))
+        style.configure("Accent.TButton", font=("Segoe UI", 9, "bold"), background=THEME["primary"], foreground="white", borderwidth=0)
+        style.map("Accent.TButton", background=[("active", THEME["primary_dark"]), ("pressed", THEME["primary_dark"])], foreground=[("active", "white")])
 
     def open_repository(self):
         try:
@@ -768,7 +779,7 @@ class PDFPartner:
             self.run_files(pdfs, mutate, out_mode.get(), out_folder.get(), suffix.get(), if_exists.get(), title)
 
         action = ttk.Frame(left); action.pack(fill="x", pady=10)
-        apply_btn = ttk.Button(action, text="Add Page Numbers" if is_num else "Apply Text", command=run)
+        apply_btn = ttk.Button(action, text="Add Page Numbers" if is_num else "Apply Text", command=run, style="Accent.TButton")
         apply_btn.pack(side="right")
         def update_apply():
             apply_btn.configure(state=("normal" if pdfs else "disabled"))
@@ -835,7 +846,7 @@ class PDFPartner:
             self.run_files(pdfs, mutate, out_mode.get(), out_folder.get(), suffix.get(), if_exists.get(), "Applying Sign / Stamp")
 
         action = ttk.Frame(left); action.pack(fill="x", pady=10)
-        apply_btn = ttk.Button(action, text="Apply Sign / Stamp", command=run); apply_btn.pack(side="right")
+        apply_btn = ttk.Button(action, text="Apply Sign / Stamp", command=run, style="Accent.TButton"); apply_btn.pack(side="right")
         def update_apply():
             apply_btn.configure(state=("normal" if (pdfs and img.get()) else "disabled"))
         update_apply()
@@ -876,7 +887,7 @@ class PDFPartner:
                     logger.error("Merge failed: %s\n%s", e, traceback.format_exc())
                     self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
             threading.Thread(target=task, daemon=True).start()
-        ttk.Button(body, text="Merge PDFs", command=run).pack(anchor="e", pady=12)
+        ttk.Button(body, text="Merge PDFs", command=run, style="Accent.TButton").pack(anchor="e", pady=12)
 
     def index_module(self):
         f = self.header("Index Builder", "Build an editable index from bookmarks (single file) or file names (multiple files), then save it as a PDF page.")
@@ -1063,7 +1074,7 @@ class PDFPartner:
                     logger.error("Split failed: %s\n%s", e, traceback.format_exc())
                     self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
             threading.Thread(target=task, daemon=True).start()
-        ttk.Button(body, text="Split PDF", command=run).pack(anchor="e", pady=12)
+        ttk.Button(body, text="Split PDF", command=run, style="Accent.TButton").pack(anchor="e", pady=12)
 
     def delete_module(self):
         f = self.header("Delete Pages", "Remove pages and save as a new PDF.")
@@ -1079,7 +1090,7 @@ class PDFPartner:
                 for pno in sorted(parse_pages(pages_v, len(doc)), reverse=True): doc.delete_page(pno)
             self.run_files(pdfs, mutate, out_mode.get(), out_folder.get(), suffix.get(), if_exists.get(), "Deleting Pages")
         action = ttk.Frame(body); action.pack(fill="x", pady=12)
-        apply_btn = ttk.Button(action, text="Delete Pages", command=run); apply_btn.pack(side="right")
+        apply_btn = ttk.Button(action, text="Delete Pages", command=run, style="Accent.TButton"); apply_btn.pack(side="right")
         def update_apply(): apply_btn.configure(state=("normal" if pdfs else "disabled"))
         update_apply()
 
@@ -1101,7 +1112,7 @@ class PDFPartner:
                     page = doc[pno]; page.set_rotation((page.rotation + deg) % 360)
             self.run_files(pdfs, mutate, out_mode.get(), out_folder.get(), suffix.get(), if_exists.get(), "Rotating Pages")
         action = ttk.Frame(body); action.pack(fill="x", pady=12)
-        apply_btn = ttk.Button(action, text="Rotate Pages", command=run); apply_btn.pack(side="right")
+        apply_btn = ttk.Button(action, text="Rotate Pages", command=run, style="Accent.TButton"); apply_btn.pack(side="right")
         def update_apply(): apply_btn.configure(state=("normal" if pdfs else "disabled"))
         update_apply()
 
@@ -1195,7 +1206,7 @@ class PDFPartner:
         row = ttk.Frame(body); row.pack(fill="x", pady=10)
         ttk.Button(row, text="Reload from first PDF", command=load_first).pack(side="left")
         ttk.Button(row, text="Clear Fields", command=clear).pack(side="left", padx=8)
-        ttk.Button(row, text="Apply Metadata", command=apply).pack(side="right")
+        ttk.Button(row, text="Apply Metadata", command=apply, style="Accent.TButton").pack(side="right")
 
 
 def choose_pdfs(parent, multiple=True, title="Select PDF file(s)"):

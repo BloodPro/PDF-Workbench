@@ -42,7 +42,7 @@ class PDFPreview(ttk.LabelFrame):
 
     def __init__(self, parent):
         super().__init__(parent, text="Preview", padding=8)
-        self.canvas = tk.Canvas(self, width=self.CANVAS_W, height=self.CANVAS_H, bg="#f0f0f0", highlightthickness=1, highlightbackground="#999")
+        self.canvas = tk.Canvas(self, width=self.CANVAS_W, height=self.CANVAS_H, bg="#FFFFFF", highlightthickness=1, highlightbackground="#E2E8F0")
         self.canvas.pack()
         self.img_ref = None
         self.img_ref_overlay = None
@@ -154,8 +154,8 @@ class PDFPreview(ttk.LabelFrame):
 
 class ScrollableFrame(ttk.Frame):
     def __init__(self, parent):
-        super().__init__(parent)
-        self.canvas = tk.Canvas(self, highlightthickness=0)
+        super().__init__(parent, style="App.TFrame")
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg="#F8FAFC")
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.inner = ttk.Frame(self.canvas)
         self.window_id = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
