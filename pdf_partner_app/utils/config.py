@@ -14,19 +14,23 @@ SETTINGS_FILE = Path.home() / ".pdf_partner_settings.json"
 LOG_FILE = Path.home() / "PDF_Partner.log"
 
 THEME = {
-    "bg": "#F8FAFC",
+    "bg": "#F3F7FB",
     "surface": "#FFFFFF",
+    "surface_alt": "#EEF3FF",
+    "panel": "#F8FAFC",
     "sidebar": "#0F172A",
     "sidebar_hover": "#1E293B",
     "primary": "#2563EB",
     "primary_dark": "#1D4ED8",
-    "text": "#0F172A",
-    "muted": "#64748B",
+    "primary_soft": "#E8F0FF",
+    "text": "#111827",
+    "muted": "#475569",
     "border": "#E2E8F0",
-    "success": "#059669",
-    "warning": "#D97706",
+    "success": "#16A34A",
+    "warning": "#F59E0B",
     "danger": "#DC2626",
-    "accent": "#3B82F6",
+    "accent": "#7C3AED",
+    "ink": "#0F172A",
 }
 
 MM = 72 / 25.4
@@ -45,6 +49,7 @@ MODULE_OUTPUT_SUFFIXES = {
     "text_heading": "_Heading",
     "page_numbering": "_Numbered",
     "sign_stamp": "_Signed",
+    "adobe_signature": "_Signed",
     "merge": "_Merged",
     "index": "_Indexed",
     "split": "_Split",
@@ -59,6 +64,7 @@ MODULE_CATEGORIES = {
     "Text Watermark / Heading": ("Watermarking & Stamping", "Add text-based headings, labels, or watermarks."),
     "Page Numbering": ("Watermarking & Stamping", "Add formatted page numbers with position controls."),
     "Sign / Stamp": ("Watermarking & Stamping", "Place image-based signatures, seals, or approval stamps."),
+    "Digital Signature": ("Watermarking & Stamping", "Add Adobe PKCS#7 compliant digital signatures with X.509 certificates."),
     "Merge PDFs": ("Core PDF Tools", "Combine multiple PDF files into one structured document."),
     "Index Builder": ("Litigation Tools", "Generate editable index tables from bookmarks or file names."),
     "Split PDF": ("Core PDF Tools", "Divide a PDF by top-level bookmarks, page count, or page ranges."),
