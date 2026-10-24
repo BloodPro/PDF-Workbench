@@ -10,6 +10,38 @@ The application is designed especially for legal, tax, tribunal, appeal, and doc
 
 ## Current Version
 
+## V1.0.4 — Workflow Stability & Release Upgrade
+
+Version `V1.0.4` is the latest update to PDF Partner, released today as a focused enhancement over `V1.0.2`. This release continues the project’s goal of improving reliability, professional usability, and safe document handling for legal and tribunal workflows.
+
+This update introduces Digital Signature within the application enhancing the practical experience of preparing, organising, and exporting PDF bundles.
+
+### Digital Signature Module Highlights
+
+- Added a dedicated digital signature and stamp workflow for placing signatures, seals, and approval marks directly onto PDFs.
+- Supports PNG, JPG, and JPEG image imports for flexible signature and seal application.
+- Allows precise placement, scaling, and page-range control for professional document preparation.
+- Includes live preview before applying changes, reducing mistakes in final document output.
+- Ideal for legal filings, approvals, internal markings, and tribunal-document workflows.Improved output-file safety and naming stability across PDF workflows
+
+### Standardised Colour Palette Highlights
+
+- Introduced a consistent colour system across the application to improve visual clarity and usability.
+- Standardised button states, section emphasis, and tool highlighting for a more professional interface.
+- Improved readability and reduced visual clutter across forms, panels, and navigation elements.
+- Created a cleaner, more cohesive product identity suitable for legal and professional workflows.
+- Ensures a more uniform experience across all PDF tools and modules.
+
+### UI/UX Highlights
+
+- Refined the interface for better navigation, visual hierarchy, and workflow clarity.
+- Improved spacing, panel consistency, and interaction patterns across the dashboard and tool windows.
+- Simplified user journeys for repeated PDF tasks such as watermarking, signing, numbering, and exporting.
+- Enhanced discoverability of features through clearer labels, grouping, and focused design patterns.
+- Delivered a more polished, professional experience aligned with real-world legal and litigation document preparation needs.Better handling of export path generation and file naming safety
+
+---
+
 ## V1.0.3 — Workflow Stability & Release Upgrade
 
 Version `V1.0.3` is the latest update to PDF Partner, released today as a focused enhancement over `V1.0.2`. This release continues the project’s goal of improving reliability, professional usability, and safe document handling for legal and tribunal workflows.
