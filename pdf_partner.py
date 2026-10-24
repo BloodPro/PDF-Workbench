@@ -108,24 +108,33 @@ class PDFPartner:
                 style.theme_use("vista")
         except Exception:
             pass
+
         try:
             self.root.configure(bg=THEME["bg"])
         except Exception:
             pass
+
         style.configure(".", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 9))
         style.configure("TFrame", background=THEME["bg"])
         style.configure("App.TFrame", background=THEME["bg"])
-        style.configure("TLabelframe", background=THEME["bg"], bordercolor=THEME["border"], relief="solid", borderwidth=1)
-        style.configure("TLabelframe.Label", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 10, "bold"))
+        style.configure("TLabelframe", background=THEME["bg"], bordercolor=THEME["border"], relief="solid",
+                        borderwidth=1)
+        style.configure("TLabelframe.Label", background=THEME["bg"], foreground=THEME["text"],
+                        font=("Segoe UI", 10, "bold"))
         style.configure("TLabel", background=THEME["bg"], foreground=THEME["text"])
         style.configure("TCheckbutton", background=THEME["bg"], foreground=THEME["text"])
-        style.configure("Header.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 22, "bold"))
+        style.configure("Header.TLabel", background=THEME["bg"], foreground=THEME["text"],
+                        font=("Segoe UI", 22, "bold"))
         style.configure("Subheader.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 10))
-        style.configure("Section.TLabel", background=THEME["bg"], foreground=THEME["text"], font=("Segoe UI", 15, "bold"))
+        style.configure("Section.TLabel", background=THEME["bg"], foreground=THEME["text"],
+                        font=("Segoe UI", 15, "bold"))
         style.configure("Muted.TLabel", background=THEME["bg"], foreground=THEME["muted"], font=("Segoe UI", 9))
         style.configure("TButton", font=("Segoe UI", 9), padding=(8, 4))
-        style.configure("Accent.TButton", font=("Segoe UI", 9, "bold"), background=THEME["primary"], foreground="white", borderwidth=0)
-        style.map("Accent.TButton", background=[("active", THEME["primary_dark"]), ("pressed", THEME["primary_dark"])], foreground=[("active", "white")])
+        style.configure("Accent.TButton", font=("Segoe UI", 9, "bold"),
+                        background=THEME["primary"], foreground="white", borderwidth=0)
+        style.map("Accent.TButton",
+                  background=[("active", THEME["primary_dark"]), ("pressed", THEME["primary_dark"])],
+                  foreground=[("active", "white"), ("pressed", "white")])
 
     def open_repository(self):
         try:
@@ -166,10 +175,15 @@ class PDFPartner:
         tk.Label(self.sidebar, text=f"by {APP_AUTHOR}", bg=THEME["sidebar"], fg="#94A3B8", font=("Segoe UI", 9), anchor="w", padx=18, pady=0).pack(fill="x")
         self.sidebar_button("Dashboard", self.home)
         groups = [
-            ("CORE PDF TOOLS", [("Merge PDFs", self.merge_module), ("Split PDF", self.split_module), ("Delete Pages", self.delete_module), ("Rotate Pages", self.rotate_module)]),
-            ("WATERMARKING", [("Text Watermark", self.text_module), ("Page Numbering", self.number_module), ("Sign / Stamp", self.sign_module)]),
-            ("LITIGATION TOOLS", [("Index Builder", self.index_module), ("Bookmark Editor", self.bookmark_module), ("PDF Organiser", self.pdf_organiser)]),
-            ("APPLICATION", [("Metadata Editor", self.metadata_module), ("Settings", self.open_settings), ("GitHub Repository", self.open_repository)]),
+            ("CORE PDF TOOLS",
+             [("Merge PDFs", self.merge_module), ("Split PDF", self.split_module), ("Delete Pages", self.delete_module),
+              ("Rotate Pages", self.rotate_module)]),
+            ("WATERMARKING", [("Text Watermark", self.text_module), ("Page Numbering", self.number_module),
+                              ("Sign / Stamp", self.sign_module), ("Digital Signature", self.adobe_signature_module)]),
+            ("LITIGATION TOOLS", [("Index Builder", self.index_module), ("Bookmark Editor", self.bookmark_module),
+                                  ("PDF Organiser", self.pdf_organiser)]),
+            ("APPLICATION", [("Metadata Editor", self.metadata_module), ("Settings", self.open_settings),
+                             ("GitHub Repository", self.open_repository)]),
         ]
         for heading, items in groups:
             tk.Label(self.sidebar, text=heading, bg=THEME["sidebar"], fg="#64748B", font=("Segoe UI", 8, "bold"), anchor="w", padx=18, pady=0).pack(fill="x")
@@ -429,28 +443,87 @@ class PDFPartner:
         self.active_tool = "Dashboard"
         self.clear()
         f = self.main_area
+
         header = ttk.Frame(f, style="App.TFrame")
         header.pack(fill="x", pady=0)
+
         left_head = ttk.Frame(header, style="App.TFrame")
         left_head.pack(side="left", fill="x", expand=True)
+
         ttk.Label(left_head, text="PDF Partner", style="Header.TLabel").pack(anchor="w")
-        ttk.Label(left_head, text="Professional PDF Workbench for Litigation & Documentation preparation", style="Subheader.TLabel").pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            left_head,
+            text="Professional PDF Workbench for Litigation & Documentation preparation",
+            style="Subheader.TLabel"
+        ).pack(anchor="w", pady=(2, 0))
+
         right_head = ttk.Frame(header, style="App.TFrame")
         right_head.pack(side="right")
+
         ttk.Button(right_head, text="GitHub Repository", command=self.open_repository).pack(side="right", padx=8)
         ttk.Button(right_head, text="Settings", command=self.open_settings).pack(side="right")
-        ttk.Label(f, text=f"Developer: {APP_AUTHOR}   |   Repository: {APP_REPOSITORY}", style="Muted.TLabel").pack(anchor="w", pady=0)
+
+        ttk.Label(
+            f,
+            text=f"Developer: {APP_AUTHOR}   |   Repository: {APP_REPOSITORY}",
+            style="Muted.TLabel"
+        ).pack(anchor="w", pady=0)
+
         ft = "Available" if FONTTOOLS_AVAILABLE else "Not installed"
         dnd = "Enabled" if DND_AVAILABLE else "Disabled"
-        ttk.Label(f, text=f"FontTools: {ft}   |   Drag-and-drop: {dnd}", style="Muted.TLabel").pack(anchor="w", pady=(0, 16))
+        ttk.Label(
+            f,
+            text=f"FontTools: {ft}   |   Drag-and-drop: {dnd}",
+            style="Muted.TLabel"
+        ).pack(anchor="w", pady=(0, 16))
+
         dashboard = ScrollableFrame(f)
         dashboard.pack(fill="both", expand=True)
         grid = dashboard.inner
+
         self.dashboard_stats(grid)
-        self.dashboard_section(grid, "Core PDF Tools", [("Merge PDFs", "Combine PDFs in order and create bookmarks from file names.", self.merge_module), ("Split PDF", "Split PDFs by bookmarks, fixed page count, or custom ranges.", self.split_module), ("Delete Pages", "Delete selected pages or page ranges safely.", self.delete_module), ("Rotate Pages", "Rotate selected, odd, even, first, last, or all pages.", self.rotate_module)])
-        self.dashboard_section(grid, "Watermarking & Stamping", [("Text Watermark", "Add file names, headings, DRAFT, CONFIDENTIAL, or custom text.", self.text_module), ("Page Numbering", "Apply professional page numbers with formatting and placement controls.", self.number_module), ("Sign / Stamp", "Apply signature, seal, or stamp images with live preview.", self.sign_module)])
-        self.dashboard_section(grid, "Litigation Tools", [("Index Builder", "Build an editable index from bookmarks or selected files.", self.index_module), ("Bookmark Editor", "View, add, edit, delete, and validate PDF bookmarks.", self.bookmark_module), ("PDF Organiser", "Arrange PDFs, edit display names, and rename files on disk.", self.pdf_organiser)])
-        self.dashboard_section(grid, "Document Properties", [("Metadata Editor", "Read, edit, clear, and batch-apply PDF metadata.", self.metadata_module)])
+
+        self.dashboard_section(
+            grid,
+            "Core PDF Tools",
+            [
+                ("Merge PDFs", "Combine PDFs in order and create bookmarks from file names.", self.merge_module),
+                ("Split PDF", "Split PDFs by bookmarks, fixed page count, or custom page ranges.", self.split_module),
+                ("Delete Pages", "Delete selected pages or ranges from a PDF document.", self.delete_module),
+                ("Rotate Pages", "Rotate selected, odd, even, first, last, or all pages.", self.rotate_module),
+            ]
+        )
+
+        self.dashboard_section(
+            grid,
+            "Watermarking & Stamping",
+            [
+                ("Text Watermark", "Add file names, headings, DRAFT, CONFIDENTIAL, or custom text.", self.text_module),
+                ("Page Numbering", "Apply professional page numbers with formatting and placement controls.",
+                 self.number_module),
+                ("Sign / Stamp", "Apply a signature, seal, or stamp image to selected pages.", self.sign_module),
+                ("Digital Signature", "Generate or load a certificate and sign PDFs with Adobe PKCS#7 workflow.",
+                 self.adobe_signature_module),
+            ]
+        )
+
+        self.dashboard_section(
+            grid,
+            "Litigation Tools",
+            [
+                ("Index Builder", "Build an editable index from bookmarks or selected files.", self.index_module),
+                ("Bookmark Editor", "View, add, edit, delete, and validate PDF bookmarks.", self.bookmark_module),
+                ("PDF Organiser", "Arrange PDFs, edit display names, and rename files on disk.", self.pdf_organiser),
+            ]
+        )
+
+        self.dashboard_section(
+            grid,
+            "Document Properties",
+            [
+                ("Metadata Editor", "Read, edit, clear, and batch-apply PDF metadata.", self.metadata_module),
+            ]
+        )
 
     def dashboard_stats(self, parent):
         wrap = ttk.Frame(parent, style="App.TFrame")
@@ -514,9 +587,9 @@ class PDFPartner:
             top_bar,
             text="← Back to Dashboard",
             command=self.home,
-            bg="#EFF6FF",
+            bg=THEME["primary_soft"],
             fg=THEME["primary"],
-            activebackground="#DBEAFE",
+            activebackground=THEME["surface_alt"],
             activeforeground=THEME["primary_dark"],
             relief="flat",
             bd=0,
@@ -541,8 +614,8 @@ class PDFPartner:
         badge = tk.Label(
             top_bar,
             text=category.upper(),
-            bg="#F1F5F9",
-            fg="#475569",
+            bg=THEME["primary_soft"],
+            fg=THEME["primary_dark"],
             font=("Segoe UI", 8, "bold"),
             padx=8,
             pady=2
@@ -1176,6 +1249,210 @@ class PDFPartner:
         row = ttk.Frame(body); row.pack(fill="x", pady=5)
         for t, c in [("Reload", load), ("Add", lambda: add_edit(False)), ("Edit", lambda: add_edit(True)), ("Delete", delete), ("Save PDF", save)]:
             ttk.Button(row, text=t, command=c).pack(side="left", padx=4)
+
+    def adobe_signature_module(self):
+        """Adobe PKCS#7 compliant digital signature module."""
+        from pdf_partner_app.core.adobe_signature import AdobeSignatureManager
+        from pathlib import Path as PathlibPath
+
+        f = self.header("Digital Signature", "Add Adobe PKCS#7 compliant digital signatures with X.509 certificates.")
+        main = ttk.Frame(f)
+        main.pack(fill="both", expand=True)
+
+        left_scroll = ScrollableFrame(main)
+        left_scroll.pack(side="left", fill="both", expand=True, padx=(0, 12))
+        left = left_scroll.inner
+
+        preview = PDFPreview(main)
+        preview.pack(side="right", fill="y")
+
+        pdfs = []
+        sig_mode = tk.StringVar(value="Use Generated Certificate")
+        cert_path = tk.StringVar(value=self.settings.get("last_cert_path", ""))
+        key_path = tk.StringVar(value=self.settings.get("last_key_path", ""))
+        gen_cert_name = tk.StringVar(value="PDF Signer")
+        gen_cert_org = tk.StringVar(value="Organization")
+        gen_cert_country = tk.StringVar(value="US")
+
+        signer_name = tk.StringVar()
+        sign_reason = tk.StringVar()
+        sign_location = tk.StringVar()
+        sign_contact = tk.StringVar()
+
+        show_visible = tk.BooleanVar(value=True)
+        sig_page = tk.StringVar(value="last")
+        sig_pos = tk.StringVar(value="Bottom Right")
+        sig_width = tk.StringVar(value="80")
+        mx = tk.StringVar(value="4")
+        my = tk.StringVar(value="3")
+        cx = tk.StringVar(value="10")
+        cy = tk.StringVar(value="10")
+
+        sched = self.debounced(preview, lambda: refresh_preview())
+
+        src_grp = self.group(left, "PDF Source")
+        self.pdf_list_selector(src_grp, pdfs, on_change=lambda: (update_apply(), sched()))
+
+        cert_grp = self.group(left, "Certificate & Key")
+        self.row_combo(cert_grp, "Certificate Source", sig_mode,
+                       ["Use Generated Certificate", "Use Existing Certificate"])
+
+        gen_section = ttk.LabelFrame(cert_grp, text="Generate New Certificate", padding=6)
+        self.row_entry(gen_section, "Common Name (CN)", gen_cert_name)
+        self.row_entry(gen_section, "Organization (O)", gen_cert_org)
+        self.row_entry(gen_section, "Country Code (C)", gen_cert_country)
+
+        cert_section = ttk.LabelFrame(cert_grp, text="Load Existing Certificate", padding=6)
+        cert_row = self.row_file(cert_section, "Certificate File (.pem/.cer)", cert_path,
+                                lambda: cert_path.set(
+                                    filedialog.askopenfilename(
+                                        parent=self.root,
+                                        title="Select Certificate",
+                                        filetypes=[("Certificate Files", "*.pem *.cer *.crt"), ("All", "*.*")]
+                                    ) or cert_path.get()
+                                ))
+        key_row = self.row_file(cert_section, "Private Key File (.pem)", key_path,
+                               lambda: key_path.set(
+                                   filedialog.askopenfilename(
+                                       parent=self.root,
+                                       title="Select Private Key",
+                                       filetypes=[("PEM Files", "*.pem"), ("All", "*.*")]
+                                   ) or key_path.get()
+                               ))
+
+        def toggle_cert_mode(*_):
+            if sig_mode.get() == "Use Generated Certificate":
+                gen_section.pack(fill="x", pady=(6, 0))
+                cert_section.pack_forget()
+            else:
+                gen_section.pack_forget()
+                cert_section.pack(fill="x", pady=(6, 0))
+
+        sig_mode.trace_add("write", toggle_cert_mode)
+        toggle_cert_mode()
+
+        detail_grp = self.group(left, "Signature Details")
+        self.row_entry(detail_grp, "Signer Name", signer_name)
+        self.row_entry(detail_grp, "Reason for Signature", sign_reason)
+        self.row_entry(detail_grp, "Location", sign_location)
+        self.row_entry(detail_grp, "Contact Information", sign_contact)
+
+        appear_grp = self.group(left, "Signature Appearance")
+        ttk.Checkbutton(appear_grp, text="Show visible signature", variable=show_visible).pack(anchor="w")
+        self.row_combo(appear_grp, "Page", sig_page, ["last", "first", "1", "2", "3"])
+        self.row_combo(appear_grp, "Position", sig_pos, POSITIONS)
+        self.row_num(appear_grp, "Width (mm)", sig_width)
+
+        detail_frame = ttk.Frame(appear_grp)
+        detail_frame.pack(fill="x")
+
+        def rebuild_margins(*_):
+            for w in detail_frame.winfo_children():
+                w.destroy()
+            p = sig_pos.get()
+            if p == "Custom X/Y":
+                self.row_num(detail_frame, "Custom X mm", cx)
+                self.row_num(detail_frame, "Custom Y mm", cy)
+            elif p != "Center":
+                self.row_num(detail_frame, "Side Margin mm", mx)
+                self.row_num(detail_frame, "Top/Bottom Margin mm", my)
+
+        sig_pos.trace_add("write", rebuild_margins)
+        rebuild_margins()
+
+        out_mode, out_folder, suffix, if_exists = self.output_group(left, MODULE_OUTPUT_SUFFIXES["adobe_signature"])
+
+        def refresh_preview():
+            preview.set_pdf(pdfs[0] if pdfs else "")
+
+        def run():
+            if not pdfs:
+                messagebox.showerror("Error", "Select PDF(s).")
+                return
+
+            if not signer_name.get():
+                messagebox.showerror("Error", "Enter signer name.")
+                return
+
+            private_key = None
+            certificate = None
+
+            if sig_mode.get() == "Use Generated Certificate":
+                private_key, certificate = AdobeSignatureManager.create_self_signed_certificate(
+                    common_name=gen_cert_name.get() or "PDF Signer",
+                    organization=gen_cert_org.get() or "Organization",
+                    country=gen_cert_country.get() or "US",
+                    validity_days=3650
+                )
+                if not private_key:
+                    messagebox.showerror("Error", "Failed to generate certificate.")
+                    return
+            else:
+                if not cert_path.get() or not key_path.get():
+                    messagebox.showerror("Error", "Specify both certificate and key files.")
+                    return
+
+                certificate = AdobeSignatureManager.load_certificate(cert_path.get())
+                private_key = AdobeSignatureManager.load_private_key(key_path.get())
+                if not certificate or not private_key:
+                    messagebox.showerror("Error", "Failed to load certificate or key.")
+                    return
+
+                self.settings.update({
+                    "last_cert_path": cert_path.get(),
+                    "last_key_path": key_path.get()
+                })
+                save_settings(self.settings)
+
+            page_str = sig_page.get()
+            if page_str == "last":
+                sig_page_no = None
+            elif page_str == "first":
+                sig_page_no = 0
+            else:
+                try:
+                    sig_page_no = int(page_str) - 1
+                except Exception:
+                    sig_page_no = None
+
+            def mutate(doc, pdf):
+                page_no = sig_page_no if sig_page_no is not None else len(doc) - 1
+                if 0 <= page_no < len(doc):
+                    if show_visible.get():
+                        AdobeSignatureManager.add_visible_signature(
+                            doc, page_no, sig_pos.get(), safe_float(sig_width.get(), 80),
+                            safe_float(mx.get(), 4), safe_float(my.get(), 3),
+                            safe_float(cx.get(), 10), safe_float(cy.get(), 10),
+                            signer_name.get(), sign_reason.get(),
+                            sign_location.get(), sign_contact.get()
+                        )
+
+                    AdobeSignatureManager.add_signature_metadata(
+                        doc, signer_name.get(), sign_reason.get(),
+                        sign_location.get(), sign_contact.get()
+                    )
+
+            self.run_files(pdfs, mutate, out_mode.get(), out_folder.get(),
+                           suffix.get(), if_exists.get(), "Applying Adobe Digital Signature")
+
+            messagebox.showinfo("Success", "PDF(s) signed successfully!")
+
+        action = ttk.Frame(left)
+        action.pack(fill="x", pady=10)
+        apply_btn = ttk.Button(action, text="Sign PDF with Adobe PKCS#7", command=run, style="Accent.TButton")
+        apply_btn.pack(side="right")
+
+        def update_apply():
+            apply_btn.configure(state=("normal" if pdfs else "disabled"))
+
+        update_apply()
+
+        for v in (sig_mode, gen_cert_name, gen_cert_org, signer_name, sign_reason,
+                 sign_location, sign_contact, show_visible, sig_page, sig_pos,
+                 sig_width, mx, my, cx, cy):
+            v.trace_add("write", sched)
+
+        refresh_preview()
 
     def metadata_module(self):
         f = self.header("Metadata Editor", "Read/edit metadata for one or more PDFs (loads automatically when you add the first file).")
