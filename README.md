@@ -2,7 +2,7 @@
 
 **PDF Partner** is a modular desktop PDF utility application developed by **BloodPro** for professional PDF preparation, litigation documentation, and structured document compilation workflows.
 
-The application is designed especially for legal, tax, tribunal, appeal, and documentation preparation use cases where PDFs need to be merged, organised, indexed, stamped, numbered, bookmarked, and prepared in a structured manner.
+The application is designed especially for legal, tax, tribunal, appeal, and documentation preparation use cases where PDFs need to be merged, organised, indexed, stamped, numbered, bookmarked, and compiled efficiently.
 
 > This application has been built through vibe coding, with a practical focus on solving real document-preparation problems faced in professional workflows.
 
@@ -10,11 +10,27 @@ The application is designed especially for legal, tax, tribunal, appeal, and doc
 
 ## Current Version
 
-## V1.0.2 — Stability & UI Polish Update
+## V1.0.3 — Workflow Stability & Release Upgrade
 
-Version `V1.0.2` is a stability and UI polish update built on top of the Phase 1 UI Refresh introduced in `v1.0.1`.
+Version `V1.0.3` is the latest update to PDF Partner, released today as a focused enhancement over `V1.0.2`. This release continues the project’s goal of improving reliability, professional usability, and safe document handling for legal and tribunal workflows.
 
-This release focuses on improving application stability, sidebar usability, output-file safety, version metadata, and release-build readiness while preserving the existing PDF processing functionality.
+This update improves operational stability across the application, strengthens output management, and enhances the practical experience of preparing, organising, and exporting PDF bundles.
+
+### Highlights of V1.0.3
+
+- Improved output-file safety and naming stability across PDF workflows
+- Better handling of repeated or overwrite-prone export scenarios
+- Refinements to dashboard usability and workflow clarity for professional use
+- Continued focus on stable PDF processing and release readiness
+- Improved version tracking and overall maintenance for future releases
+
+### Included in the Latest Update
+
+- Better handling of export path generation and file naming safety
+- Reduced friction in repeated processing runs and output generation
+- Improved consistency across existing PDF tools and interface interactions
+- Added a clearer release version progression from `V1.0.2` to `V1.0.3`
+- Overall polish for professional document preparation and litigation utility workflows
 
 ---
 
@@ -491,6 +507,75 @@ python -m PyInstaller --onefile --windowed --name PDF_Partner --icon icon.ico --
 
 ## Release Notes
 
+## v1.0.3 — Workflow Stability & Release Upgrade
+
+### Added
+
+- Improved release versioning and application metadata clarity
+- Better handling of output generation and overwrite protection
+- More stable operational behaviour across document preparation workflows
+
+### Improved
+
+- Dashboard and utility workflow consistency
+- Output safety and repeat-run reliability
+- Overall user confidence during routine PDF processing tasks
+
+### Preserved
+
+The core PDF features from `v1.0.2` are retained, including:
+
+- Merge PDFs
+- Split PDF
+- Delete Pages
+- Rotate Pages
+- Text Watermark / Heading
+- Page Numbering
+- Sign / Stamp
+- Index Builder
+- Bookmark Editor
+- PDF Organiser
+- Metadata Editor
+
+### Notes
+
+- This version is focused on release polish, stability, and productive workflow continuation.
+- It builds directly on the `V1.0.2` foundation without disrupting the existing feature set.
+
+---
+
+## v1.0.2 — Stability & UI Polish Update
+
+### Added
+
+- Active sidebar highlighting
+- Improved output file safety handling
+- Updated version metadata and release readiness
+
+### Improved
+
+- Dashboard and sidebar stability
+- File output generation and suffix management
+- Application polish for legal-document workflows
+
+### Preserved
+
+The core PDF features from `v1.0.1` remain intact, including:
+
+- Merge PDFs
+- Split PDF
+- Delete Pages
+- Rotate Pages
+- Text Watermark / Heading
+- Page Numbering
+- Sign / Stamp
+- Index Builder
+- Bookmark Editor
+- PDF Organiser
+- Metadata Editor
+
+---
+
 ## v1.0.1 — Phase 1 UI Refresh
 
 ### Added
@@ -545,7 +630,7 @@ Initial Windows executable release of PDF Partner with core PDF utility modules.
 For GitHub Releases, the executable may be uploaded as:
 
 ```text
-PDF_Partner_v1.0.1_Windows.exe
+PDF_Partner_v1.0.3_Windows.exe
 ```
 
 ---
