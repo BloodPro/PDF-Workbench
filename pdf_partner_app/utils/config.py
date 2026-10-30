@@ -9,7 +9,7 @@ APP_AUTHOR = "BloodPro"
 APP_REPOSITORY = "https://github.com/BloodPro/PDF-Workbench.git"
 APP_DESCRIPTION = "Professional PDF Workbench for Litigation & Documentation preparation"
 APP_COPYRIGHT = "© BloodPro"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.4"
 SETTINGS_FILE = Path.home() / ".pdf_partner_settings.json"
 LOG_FILE = Path.home() / "PDF_Partner.log"
 
